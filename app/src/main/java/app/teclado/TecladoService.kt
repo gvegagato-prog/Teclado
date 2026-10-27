@@ -16,7 +16,7 @@ import app.teclado.engine.LanguageDetector
 import app.teclado.engine.Lexicon
 import app.teclado.engine.SpellEngine
 
-class TecladoService : InputMethodService(), KeyboardListener {
+open class TecladoService : InputMethodService(), KeyboardListener {
 
     private enum class Kind { LITERAL, CORRECTION, COMPLETION, SHORTCUT }
     private class Sugg(val text: String, val kind: Kind)
@@ -27,6 +27,9 @@ class TecladoService : InputMethodService(), KeyboardListener {
     private val ui = Handler(Looper.getMainLooper())
 
     @Volatile private var engine: SpellEngine? = null
+    internal val engineReady get() = engine != null
+    internal val language get() = currentLang()
+    internal val shiftState get() = shift
     @Volatile private var detector: LanguageDetector? = null
     private var lexicons: Map<Lang, Lexicon> = emptyMap()
 

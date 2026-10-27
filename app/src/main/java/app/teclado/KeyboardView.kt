@@ -221,6 +221,14 @@ class KeyboardView(context: Context) : View(context) {
         return cy - (fm.ascent + fm.descent) / 2f
     }
 
+    private val bounds = android.graphics.Rect()
+
+    /** Como [centerBaseline] pero centrando el dibujo real del glifo: queda bien en . , ' " - etc. */
+    private fun centerBaselineGlyph(text: String, cy: Float): Float {
+        textPaint.getTextBounds(text, 0, text.length, bounds)
+        return cy - (bounds.top + bounds.bottom) / 2f
+    }
+
     private fun drawKeyContent(canvas: Canvas, f: KeyFrame, t: KbTheme, enterAction: Boolean, pressed: Boolean) {
         val r = f.rect
         val cx = r.centerX()
@@ -234,7 +242,9 @@ class KeyboardView(context: Context) : View(context) {
                 textPaint.color = t.text
                 textPaint.textSize = keyH * 0.43f
                 val label = cased(def)
-                canvas.drawText(label, cx, centerBaseline(cy + if (hasHint) keyH * 0.08f else 0f), textPaint)
+                val ly = cy + if (hasHint) keyH * 0.08f else 0f
+                val glyphCentered = label.length == 1 && !label[0].isLetterOrDigit()
+                canvas.drawText(label, cx, if (glyphCentered) centerBaselineGlyph(label, ly) else centerBaseline(ly), textPaint)
                 if (hasHint) {
                     textPaint.textSize = keyH * 0.2f
                     textPaint.color = t.hint

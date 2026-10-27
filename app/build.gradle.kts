@@ -42,8 +42,21 @@ android {
     androidResources {
         noCompress += "tsv"
     }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all { t ->
+            // Opcional: usar jars de Robolectric ya descargados (entornos sin acceso directo a Maven Central).
+            providers.gradleProperty("robolectricDir").orNull?.let {
+                t.systemProperty("robolectric.offline", "true")
+                t.systemProperty("robolectric.dependency.dir", it)
+            }
+            providers.gradleProperty("previewDir").orNull?.let { t.systemProperty("preview.dir", it) }
+        }
+    }
 }
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.17")
 }

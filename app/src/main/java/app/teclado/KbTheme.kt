@@ -14,5 +14,5 @@ class KbTheme(val dark: Boolean) {
     val accent = if (dark) 0xFF0A84FF.toInt() else 0xFF007AFF.toInt()
     val onAccent = 0xFFFFFFFF.toInt()
     val divider = if (dark) 0x33FFFFFF else 0x22000000
-    val popup = if (dark) 0xFF58585C.toInt() else 0xFFFFFFFF.toInt()
+    val popup = if (dark) 0xFF76767B.toInt() else 0xFFFFFFFF.toInt()
 }

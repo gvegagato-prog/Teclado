@@ -54,8 +54,6 @@ class KeyboardView(context: Context) : View(context) {
     var spaceLabelAccent: Boolean = false
         set(v) { field = v; invalidate() }
 
-    /** true mientras Shift está mantenido: las teclas muestran y escriben su símbolo pequeño. */
-    private var hintHeld = false
     /** Margen inferior elegido por el usuario en dp; 0 = automático. */
     var bottomMarginDp: Int = 0
         set(v) { field = v; requestLayout() }
@@ -262,12 +260,11 @@ class KeyboardView(context: Context) : View(context) {
         when (def.type) {
             KeyType.CHAR -> {
                 val hint = def.hint
-                val hasHint = hint != null && layer == Layer.LETTERS && !hintHeld
+                val hasHint = hint != null && layer == Layer.LETTERS
                 textPaint.typeface = regular
                 textPaint.color = t.text
                 textPaint.textSize = keyH * 0.43f
-                val showHeld = hintHeld && hint != null && layer == Layer.LETTERS
-                val label = if (showHeld) hint!! else cased(def)
+                val label = cased(def)
                 val ly = cy + if (hasHint) keyH * 0.08f else 0f
                 val glyphCentered = label.length == 1 && !label[0].isLetterOrDigit()
                 canvas.drawText(label, cx, if (glyphCentered) centerBaselineGlyph(label, ly) else centerBaseline(ly), textPaint)
@@ -370,7 +367,7 @@ class KeyboardView(context: Context) : View(context) {
             val f = p.key ?: continue
             if (f.def.type != KeyType.CHAR) continue
             when (p.mode) {
-                Mode.NORMAL -> drawBubble(canvas, t, f, if (hintHeld && f.def.hint != null && layer == Layer.LETTERS) f.def.hint else cased(f.def))
+                Mode.NORMAL -> drawBubble(canvas, t, f, cased(f.def))
                 Mode.HINT -> drawBubble(canvas, t, f, f.def.hint ?: "")
                 Mode.POPUP -> drawAlternates(canvas, t, f, p)
                 else -> {}
@@ -445,7 +442,7 @@ class KeyboardView(context: Context) : View(context) {
     }
 
     // ---------- táctil ----------
-    private enum class Mode { NORMAL, HINT, POPUP, SPACE_DRAG, STRIP, SHIFT_HOLD, IGNORED }
+    private enum class Mode { NORMAL, HINT, POPUP, SPACE_DRAG, STRIP, IGNORED }
 
     private class Ptr(val id: Int) {
         var key: KeyFrame? = null
@@ -575,19 +572,6 @@ class KeyboardView(context: Context) : View(context) {
                 p.longPress = lp
                 handler.postDelayed(lp, 360L)
             }
-            KeyType.SHIFT -> {
-                val lp = Runnable {
-                    if (p.mode == Mode.NORMAL) {
-                        p.mode = Mode.SHIFT_HOLD
-                        p.longFired = true
-                        hintHeld = true
-                        feedback()
-                        invalidate()
-                    }
-                }
-                p.longPress = lp
-                handler.postDelayed(lp, 280L)
-            }
             else -> {}
         }
     }
@@ -669,7 +653,6 @@ class KeyboardView(context: Context) : View(context) {
         pointers.remove(id)
         cancelTimers(p)
         val f = p.key
-        if (p.mode == Mode.SHIFT_HOLD) hintHeld = false
         when (p.mode) {
             Mode.STRIP -> if (p.slot >= 0) listener?.onSuggestion(p.slot)
             Mode.POPUP -> if (f != null) {
@@ -680,10 +663,7 @@ class KeyboardView(context: Context) : View(context) {
             Mode.HINT -> f?.def?.hint?.let { listener?.onChar(it) }
             Mode.NORMAL -> if (f != null && !p.longFired) {
                 when (f.def.type) {
-                    KeyType.CHAR -> {
-                        val h = f.def.hint
-                        listener?.onChar(if (hintHeld && h != null && layer == Layer.LETTERS) h else cased(f.def))
-                    }
+                    KeyType.CHAR -> listener?.onChar(cased(f.def))
                     KeyType.DELETE -> {}
                     else -> listener?.onSpecial(f.def.type)
                 }
@@ -696,7 +676,6 @@ class KeyboardView(context: Context) : View(context) {
     private fun cancelAll() {
         for (i in 0 until pointers.size()) cancelTimers(pointers.valueAt(i))
         pointers.clear()
-        hintHeld = false
         invalidate()
     }
 

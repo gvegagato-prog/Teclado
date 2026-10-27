@@ -20,7 +20,6 @@ actualizaciones se instalen encima. Sirve para uso personal, no para publicar en
 - Atajos de texto (ajustes de la app): p. ej. `@@@` + espacio → tu correo.
 - Arrastrar sobre la barra espaciadora mueve el cursor. Doble espacio escribe un punto.
 - Siempre bilingüe: no hay tecla de idioma; la barra espaciadora muestra el idioma detectado.
-- Mantener Shift pulsado muestra y escribe los símbolos pequeños de cada tecla (con otro dedo).
 - 7 temas (sistema, claro, arena, rosa, oscuro, medianoche, negro), altura y margen inferior ajustables, vibración opcional.
 
 ## Desarrollo

@@ -93,13 +93,6 @@ class RenderPreviewTest {
             save(v, "theme_$name")
         }
 
-        val held = make(KbTheme.LIGHT)
-        val (sx, sy) = center2(held, "") // la primera tecla sin etiqueta es Shift
-        touch(held, MotionEvent.ACTION_DOWN, sx, sy)
-        ShadowLooper.idleMainLooper(400, java.util.concurrent.TimeUnit.MILLISECONDS)
-        save(held, "light_shift_held")
-        touch(held, MotionEvent.ACTION_UP, sx, sy)
-
         val phone = make(KbTheme.LIGHT, 1080)
         save(phone, "light_narrow")
     }

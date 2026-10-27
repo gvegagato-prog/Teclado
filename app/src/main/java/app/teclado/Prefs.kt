@@ -20,9 +20,6 @@ class Prefs(context: Context) {
     var suggestions: Boolean
         get() = sp.getBoolean("suggestions", true)
         set(v) = sp.edit().putBoolean("suggestions", v).apply()
-    var autoLanguage: Boolean
-        get() = sp.getBoolean("autoLanguage", true)
-        set(v) = sp.edit().putBoolean("autoLanguage", v).apply()
     var autoCapitalize: Boolean
         get() = sp.getBoolean("autoCapitalize", true)
         set(v) = sp.edit().putBoolean("autoCapitalize", v).apply()
@@ -39,10 +36,15 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("sound", false)
         set(v) = sp.edit().putBoolean("sound", v).apply()
 
-    /** "system", "light" o "dark". */
+    /** Una de [KbTheme.NAMES]. */
     var theme: String
         get() = sp.getString("theme", "system") ?: "system"
         set(v) = sp.edit().putString("theme", v).apply()
+
+    /** Margen inferior en dp; 0 = automático. */
+    var bottomMargin: Int
+        get() = sp.getInt("bottomMargin", 0)
+        set(v) = sp.edit().putInt("bottomMargin", v.coerceIn(0, 60)).apply()
 
     /** Altura de las teclas en %, 80..130. */
     var heightPercent: Int

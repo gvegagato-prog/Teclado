@@ -1,6 +1,6 @@
 package app.teclado
 
-enum class KeyType { CHAR, SHIFT, DELETE, SYM1, SYM2, ABC, LANG, SPACE, ENTER, SPACER }
+enum class KeyType { CHAR, SHIFT, DELETE, SYM1, SYM2, ABC, SPACE, ENTER, SPACER }
 enum class Layer { LETTERS, SYM1, SYM2 }
 
 /**
@@ -57,7 +57,7 @@ object Layouts {
             listOf(KeyDef(KeyType.SHIFT, weight = 1.5f)) +
                 ROW3.mapIndexed { i, ch -> c(ch.toString(), ROW3_HINTS[i]) } +
                 KeyDef(KeyType.DELETE, weight = 1.5f),
-            bottom(KeyType.SYM1, "123", spaceW = 3.8f),
+            bottom(KeyType.SYM1, "123", spaceW = 4.6f),
         )
         Layer.SYM1 -> listOf(
             "1234567890".map { c(it.toString()) },
@@ -65,7 +65,7 @@ object Layouts {
             listOf(KeyDef(KeyType.SYM2, "#+=", weight = 1.5f)) +
                 listOf(".", ",", "?", "!", "'").map { c(it, weight = 1.4f) } +
                 KeyDef(KeyType.DELETE, weight = 1.5f),
-            bottom(KeyType.ABC, "ABC", spaceW = 5.8f, punctuation = false),
+            bottom(KeyType.ABC, "ABC", spaceW = 6.6f, punctuation = false),
         )
         Layer.SYM2 -> listOf(
             listOf("[", "]", "{", "}", "#", "%", "^", "*", "+", "=").map { c(it) },
@@ -73,14 +73,13 @@ object Layouts {
             listOf(KeyDef(KeyType.SYM1, "123", weight = 1.5f)) +
                 listOf(".", ",", "?", "!", "'").map { c(it, weight = 1.4f) } +
                 KeyDef(KeyType.DELETE, weight = 1.5f),
-            bottom(KeyType.ABC, "ABC", spaceW = 5.8f, punctuation = false),
+            bottom(KeyType.ABC, "ABC", spaceW = 6.6f, punctuation = false),
         )
     }
 
     private fun bottom(layerKey: KeyType, label: String, spaceW: Float, punctuation: Boolean = true) =
         buildList {
-            add(KeyDef(layerKey, label, weight = 1.4f))
-            add(KeyDef(KeyType.LANG, weight = 1f))
+            add(KeyDef(layerKey, label, weight = 1.6f))
             if (punctuation) add(c(",", "!"))
             add(KeyDef(KeyType.SPACE, weight = spaceW))
             if (punctuation) add(c(".", "?"))

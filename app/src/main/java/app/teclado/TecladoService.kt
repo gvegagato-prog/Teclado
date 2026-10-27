@@ -55,8 +55,6 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     private var imeAction = EditorInfo.IME_ACTION_NONE
     private var noEnterAction = false
 
-    // idioma
-    private var manualLang: Lang? = null
     private var lastLangShown: Lang? = null
 
     override fun onCreate() {
@@ -95,15 +93,13 @@ open class TecladoService : InputMethodService(), KeyboardListener {
         applyPrefs()
     }
 
-    private fun isDark(): Boolean = when (prefs.theme) {
-        "dark" -> true
-        "light" -> false
-        else -> (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-    }
+    private fun systemDark(): Boolean =
+        (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
     private fun applyPrefs() {
         val v = kb ?: return
-        v.theme = KbTheme(isDark())
+        v.theme = KbTheme.byName(prefs.theme, systemDark())
+        v.bottomMarginDp = prefs.bottomMargin
         v.heightPercent = prefs.heightPercent
         v.swipeDownEnabled = prefs.swipeDownSymbols
         v.hapticsEnabled = prefs.haptics
@@ -215,21 +211,17 @@ open class TecladoService : InputMethodService(), KeyboardListener {
         kb?.shift = shift
     }
 
-    private fun currentLang(): Lang = manualLang
-        ?: if (prefs.autoLanguage) detector?.current ?: prefs.defaultLang else prefs.defaultLang
+    private fun currentLang(): Lang = detector?.current ?: prefs.defaultLang
 
     private fun updateSpaceLabel() {
         val l = currentLang()
         kb?.spaceLabel = l.label
-        kb?.spaceLabelAccent = manualLang != null
         lastLangShown = l
     }
 
     private fun observeWord(word: String) {
-        if (manualLang == null && prefs.autoLanguage) {
-            detector?.observe(word)
-            if (detector?.current != lastLangShown) updateSpaceLabel()
-        }
+        detector?.observe(word)
+        if (detector?.current != lastLangShown) updateSpaceLabel()
     }
 
     private fun enterLabelFor(): String? {
@@ -314,7 +306,6 @@ open class TecladoService : InputMethodService(), KeyboardListener {
             KeyType.SYM1 -> setLayer(Layer.SYM1)
             KeyType.SYM2 -> setLayer(Layer.SYM2)
             KeyType.ABC -> { setLayer(Layer.LETTERS); updateShiftFromContext() }
-            KeyType.LANG -> cycleLanguage()
             KeyType.SPACE -> onSpace()
             KeyType.ENTER -> onEnter()
             else -> {}
@@ -324,30 +315,6 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     private fun setLayer(l: Layer) {
         layer = l
         kb?.layer = l
-    }
-
-    private fun cycleLanguage() {
-        manualLang = when (manualLang) {
-            null -> Lang.ES
-            Lang.ES -> Lang.EN
-            Lang.EN -> null
-        }
-        updateSpaceLabel()
-        val v = kb ?: return
-        v.spaceLabel = when (manualLang) {
-            null -> getString(R.string.lang_auto, currentLang().label)
-            else -> getString(R.string.lang_fixed, manualLang!!.label)
-        }
-        v.spaceLabelAccent = true
-        ui.removeCallbacks(restoreLabel)
-        ui.postDelayed(restoreLabel, 1300L)
-        refreshSuggestions()
-    }
-
-    private val restoreLabel = Runnable { updateSpaceLabel() }
-
-    override fun onLangLongPress() {
-        (getSystemService(INPUT_METHOD_SERVICE) as? InputMethodManager)?.showInputMethodPicker()
     }
 
     private fun onSpace() {

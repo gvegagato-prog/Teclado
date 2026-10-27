@@ -19,8 +19,9 @@ actualizaciones se instalen encima. Sirve para uso personal, no para publicar en
 - Pulsación larga: tildes y variantes (á é í ó ú ü ñ ç…); en `.` también `? ! ¿ ¡ …`.
 - Atajos de texto (ajustes de la app): p. ej. `@@@` + espacio → tu correo.
 - Arrastrar sobre la barra espaciadora mueve el cursor. Doble espacio escribe un punto.
-- Tecla del globo: Auto → Español fijo → English fijo. Mantenida: selector de teclados del sistema.
-- Claro/oscuro, altura de teclas ajustable, vibración opcional.
+- Siempre bilingüe: no hay tecla de idioma; la barra espaciadora muestra el idioma detectado.
+- Mantener Shift pulsado muestra y escribe los símbolos pequeños de cada tecla (con otro dedo).
+- 7 temas (sistema, claro, arena, rosa, oscuro, medianoche, negro), altura y margen inferior ajustables, vibración opcional.
 
 ## Desarrollo
 - `./gradlew testDebugUnitTest` — pruebas del motor, del flujo de edición y generación de capturas (`app/build/previews`).

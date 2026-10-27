@@ -29,7 +29,6 @@ interface KeyboardListener {
     fun onDeleteRepeat()
     fun onCursorMove(delta: Int)
     fun onSuggestion(slot: Int)
-    fun onLangLongPress()
 }
 
 /**
@@ -39,7 +38,7 @@ interface KeyboardListener {
 class KeyboardView(context: Context) : View(context) {
 
     var listener: KeyboardListener? = null
-    var theme: KbTheme = KbTheme(false)
+    var theme: KbTheme = KbTheme.LIGHT
         set(v) { field = v; invalidate() }
 
     var shift: Shift = Shift.OFF
@@ -54,6 +53,12 @@ class KeyboardView(context: Context) : View(context) {
         set(v) { field = v; invalidate() }
     var spaceLabelAccent: Boolean = false
         set(v) { field = v; invalidate() }
+
+    /** true mientras Shift está mantenido: las teclas muestran y escriben su símbolo pequeño. */
+    private var hintHeld = false
+    /** Margen inferior elegido por el usuario en dp; 0 = automático. */
+    var bottomMarginDp: Int = 0
+        set(v) { field = v; requestLayout() }
 
     var heightPercent: Int = 100
         set(v) { field = v; requestLayout() }
@@ -83,7 +88,6 @@ class KeyboardView(context: Context) : View(context) {
     private var topPad = 0f
     private var stripH = 0f
     private var rowsTop = 0f
-    private var bottomInset = 0f
 
     private fun rebuild() {
         rows = Layouts.rows(layer)
@@ -133,14 +137,35 @@ class KeyboardView(context: Context) : View(context) {
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) = layoutKeys(w)
 
+    private var systemBottom = 0f
+
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
-        val b = if (Build.VERSION.SDK_INT >= 30) insets.getInsets(WindowInsets.Type.navigationBars()).bottom else 0
-        if (b.toFloat() != bottomInset) {
-            bottomInset = b.toFloat()
+        var b = 0
+        if (Build.VERSION.SDK_INT >= 30) {
+            b = maxOf(
+                insets.getInsets(WindowInsets.Type.navigationBars()).bottom,
+                insets.getInsets(WindowInsets.Type.systemBars()).bottom,
+                insets.getInsets(WindowInsets.Type.tappableElement()).bottom,
+            )
+        }
+        if (b.toFloat() != systemBottom) {
+            systemBottom = b.toFloat()
             requestLayout()
         }
         return super.onApplyWindowInsets(insets)
     }
+
+    /**
+     * Margen inferior: el ajuste del usuario si lo hay; si no, la barra de navegación que informe el sistema
+     * y, si no informa nada en Android 15+, un margen fijo para no quedar bajo los botones del teclado.
+     */
+    private val bottomInset: Float
+        get() = when {
+            bottomMarginDp > 0 -> dp(bottomMarginDp.toFloat())
+            systemBottom > 0f -> systemBottom
+            Build.VERSION.SDK_INT >= 35 -> dp(28f)
+            else -> 0f
+        }
 
     // ---------- dibujo ----------
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -237,11 +262,12 @@ class KeyboardView(context: Context) : View(context) {
         when (def.type) {
             KeyType.CHAR -> {
                 val hint = def.hint
-                val hasHint = hint != null && layer == Layer.LETTERS
+                val hasHint = hint != null && layer == Layer.LETTERS && !hintHeld
                 textPaint.typeface = regular
                 textPaint.color = t.text
                 textPaint.textSize = keyH * 0.43f
-                val label = cased(def)
+                val showHeld = hintHeld && hint != null && layer == Layer.LETTERS
+                val label = if (showHeld) hint!! else cased(def)
                 val ly = cy + if (hasHint) keyH * 0.08f else 0f
                 val glyphCentered = label.length == 1 && !label[0].isLetterOrDigit()
                 canvas.drawText(label, cx, if (glyphCentered) centerBaselineGlyph(label, ly) else centerBaseline(ly), textPaint)
@@ -276,7 +302,6 @@ class KeyboardView(context: Context) : View(context) {
             }
             KeyType.SHIFT -> drawShift(canvas, cx, cy, keyH * 0.2f, t.text)
             KeyType.DELETE -> drawDelete(canvas, cx, cy, keyH * 0.2f, t.text)
-            KeyType.LANG -> drawGlobe(canvas, cx, cy, keyH * 0.2f, t.text)
             KeyType.SPACER -> {}
         }
     }
@@ -324,16 +349,6 @@ class KeyboardView(context: Context) : View(context) {
         c.drawLine(mx - k, cy + k, mx + k, cy - k, stroke)
     }
 
-    private fun drawGlobe(c: Canvas, cx: Float, cy: Float, s: Float, color: Int) {
-        strokeStyle(color, s)
-        val r = s * 1.05f
-        c.drawCircle(cx, cy, r, stroke)
-        tmp.set(cx - r * 0.45f, cy - r, cx + r * 0.45f, cy + r)
-        c.drawOval(tmp, stroke)
-        c.drawLine(cx - r, cy, cx + r, cy, stroke)
-        c.drawLine(cx, cy - r, cx, cy + r, stroke)
-    }
-
     private fun drawReturn(c: Canvas, cx: Float, cy: Float, s: Float, color: Int) {
         strokeStyle(color, s)
         path.reset()
@@ -355,7 +370,7 @@ class KeyboardView(context: Context) : View(context) {
             val f = p.key ?: continue
             if (f.def.type != KeyType.CHAR) continue
             when (p.mode) {
-                Mode.NORMAL -> drawBubble(canvas, t, f, cased(f.def))
+                Mode.NORMAL -> drawBubble(canvas, t, f, if (hintHeld && f.def.hint != null && layer == Layer.LETTERS) f.def.hint else cased(f.def))
                 Mode.HINT -> drawBubble(canvas, t, f, f.def.hint ?: "")
                 Mode.POPUP -> drawAlternates(canvas, t, f, p)
                 else -> {}
@@ -430,7 +445,7 @@ class KeyboardView(context: Context) : View(context) {
     }
 
     // ---------- táctil ----------
-    private enum class Mode { NORMAL, HINT, POPUP, SPACE_DRAG, STRIP, IGNORED }
+    private enum class Mode { NORMAL, HINT, POPUP, SPACE_DRAG, STRIP, SHIFT_HOLD, IGNORED }
 
     private class Ptr(val id: Int) {
         var key: KeyFrame? = null
@@ -560,14 +575,18 @@ class KeyboardView(context: Context) : View(context) {
                 p.longPress = lp
                 handler.postDelayed(lp, 360L)
             }
-            KeyType.LANG -> {
+            KeyType.SHIFT -> {
                 val lp = Runnable {
-                    p.longFired = true
-                    feedback()
-                    listener?.onLangLongPress()
+                    if (p.mode == Mode.NORMAL) {
+                        p.mode = Mode.SHIFT_HOLD
+                        p.longFired = true
+                        hintHeld = true
+                        feedback()
+                        invalidate()
+                    }
                 }
                 p.longPress = lp
-                handler.postDelayed(lp, 450L)
+                handler.postDelayed(lp, 280L)
             }
             else -> {}
         }
@@ -650,6 +669,7 @@ class KeyboardView(context: Context) : View(context) {
         pointers.remove(id)
         cancelTimers(p)
         val f = p.key
+        if (p.mode == Mode.SHIFT_HOLD) hintHeld = false
         when (p.mode) {
             Mode.STRIP -> if (p.slot >= 0) listener?.onSuggestion(p.slot)
             Mode.POPUP -> if (f != null) {
@@ -660,7 +680,10 @@ class KeyboardView(context: Context) : View(context) {
             Mode.HINT -> f?.def?.hint?.let { listener?.onChar(it) }
             Mode.NORMAL -> if (f != null && !p.longFired) {
                 when (f.def.type) {
-                    KeyType.CHAR -> listener?.onChar(cased(f.def))
+                    KeyType.CHAR -> {
+                        val h = f.def.hint
+                        listener?.onChar(if (hintHeld && h != null && layer == Layer.LETTERS) h else cased(f.def))
+                    }
                     KeyType.DELETE -> {}
                     else -> listener?.onSpecial(f.def.type)
                 }
@@ -673,6 +696,7 @@ class KeyboardView(context: Context) : View(context) {
     private fun cancelAll() {
         for (i in 0 until pointers.size()) cancelTimers(pointers.valueAt(i))
         pointers.clear()
+        hintHeld = false
         invalidate()
     }
 

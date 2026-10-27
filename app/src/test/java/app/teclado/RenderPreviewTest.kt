@@ -21,10 +21,10 @@ import java.io.FileOutputStream
 class RenderPreviewTest {
     private val out = File(System.getProperty("preview.dir") ?: "build/previews").also { it.mkdirs() }
 
-    private fun make(dark: Boolean, widthPx: Int = 1600): KeyboardView {
+    private fun make(theme: KbTheme, widthPx: Int = 1600): KeyboardView {
         val ctx = RuntimeEnvironment.getApplication()
         val v = KeyboardView(ctx)
-        v.theme = KbTheme(dark)
+        v.theme = theme
         v.spaceLabel = "Español"
         v.hapticsEnabled = false
         v.measure(View.MeasureSpec.makeMeasureSpec(widthPx, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
@@ -44,20 +44,20 @@ class RenderPreviewTest {
     }
 
     @Test fun render() {
-        val light = make(false)
+        val light = make(KbTheme.LIGHT)
         light.setSuggestions(listOf(SuggestionItem("\"helo\""), SuggestionItem("hello", true), SuggestionItem("help")))
         save(light, "light_letters")
 
-        val dark = make(true)
+        val dark = make(KbTheme.DARK)
         dark.shift = Shift.ONCE
         dark.setSuggestions(listOf(SuggestionItem("the"), SuggestionItem("their", true), SuggestionItem("them")))
         save(dark, "dark_shift")
 
-        val sym = make(false)
+        val sym = make(KbTheme.LIGHT)
         sym.layer = Layer.SYM1
         save(sym, "light_symbols")
 
-        val press = make(false)
+        val press = make(KbTheme.LIGHT)
         // pulsar la 'g' (fila 2) y la 'q' (fila 1)
         val gKey = press.javaClass.getDeclaredField("frames").also { it.isAccessible = true }.get(press) as List<*>
         fun center(label: String): Pair<Float, Float> {
@@ -73,21 +73,34 @@ class RenderPreviewTest {
         save(press, "pressed_g")
         touch(press, MotionEvent.ACTION_UP, gx, gy)
 
-        val hint = make(true)
+        val hint = make(KbTheme.DARK)
         val (hx, hy) = center2(hint, "h")
         touch(hint, MotionEvent.ACTION_DOWN, hx, hy)
         touch(hint, MotionEvent.ACTION_MOVE, hx, hy + 80f)
         save(hint, "dark_swipe_down_hint")
         touch(hint, MotionEvent.ACTION_UP, hx, hy + 80f)
 
-        val pop = make(false)
+        val pop = make(KbTheme.LIGHT)
         val (ax, ay) = center2(pop, "a")
         touch(pop, MotionEvent.ACTION_DOWN, ax, ay)
         ShadowLooper.idleMainLooper(500, java.util.concurrent.TimeUnit.MILLISECONDS)
         save(pop, "light_longpress_a")
         touch(pop, MotionEvent.ACTION_UP, ax, ay)
 
-        val phone = make(false, 1080)
+        for (name in listOf("sand", "rose", "midnight", "black")) {
+            val v = make(KbTheme.byName(name, false))
+            v.setSuggestions(listOf(SuggestionItem("\"helo\""), SuggestionItem("hello", true), SuggestionItem("help")))
+            save(v, "theme_$name")
+        }
+
+        val held = make(KbTheme.LIGHT)
+        val (sx, sy) = center2(held, "") // la primera tecla sin etiqueta es Shift
+        touch(held, MotionEvent.ACTION_DOWN, sx, sy)
+        ShadowLooper.idleMainLooper(400, java.util.concurrent.TimeUnit.MILLISECONDS)
+        save(held, "light_shift_held")
+        touch(held, MotionEvent.ACTION_UP, sx, sy)
+
+        val phone = make(KbTheme.LIGHT, 1080)
         save(phone, "light_narrow")
     }
 

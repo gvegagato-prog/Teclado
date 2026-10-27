@@ -8,8 +8,6 @@
     <string name="enter_send">Enviar</string>
     <string name="enter_next">Sig.</string>
     <string name="enter_done">Listo</string>
-    <string name="lang_auto">Auto · %1$s</string>
-    <string name="lang_fixed">%1$s (fijo)</string>
 
     <string name="subtitle">Teclado bilingüe rápido (castellano / inglés)</string>
     <string name="sec_setup">Configuración</string>
@@ -26,8 +24,6 @@
     <string name="opt_autocorrect">Autocorrección</string>
     <string name="opt_autocorrect_sub">Corrige la palabra al pulsar espacio o puntuación. Borrar la deshace.</string>
     <string name="opt_suggestions">Barra de sugerencias</string>
-    <string name="opt_autolang">Detectar el idioma automáticamente</string>
-    <string name="opt_autolang_sub">Castellano o inglés según lo que escribes. La tecla del globo fuerza uno.</string>
     <string name="opt_autocap">Mayúscula automática</string>
     <string name="opt_doublespace">Doble espacio escribe un punto</string>
 
@@ -40,6 +36,13 @@
     <string name="theme_system">Sistema</string>
     <string name="theme_light">Claro</string>
     <string name="theme_dark">Oscuro</string>
+    <string name="theme_sand">Arena</string>
+    <string name="theme_rose">Rosa</string>
+    <string name="theme_midnight">Medianoche</string>
+    <string name="theme_black">Negro</string>
+    <string name="opt_margin">Margen inferior: %1$d dp</string>
+    <string name="opt_margin_auto">Margen inferior: automático</string>
+    <string name="opt_margin_sub">Súbelo si los botones del sistema tapan la fila de abajo</string>
     <string name="opt_height">Altura de las teclas: %1$d%%</string>
 
     <string name="sec_shortcuts">Atajos de texto</string>

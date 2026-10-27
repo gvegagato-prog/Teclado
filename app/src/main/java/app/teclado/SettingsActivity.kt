@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.res.Configuration
-import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -117,12 +116,13 @@ class SettingsActivity : Activity() {
             addView(divider())
             switchRow(R.string.opt_suggestions, null, prefs.suggestions) { prefs.suggestions = it }
             addView(divider())
-            switchRow(R.string.opt_autolang, R.string.opt_autolang_sub, prefs.autoLanguage) { prefs.autoLanguage = it }
-            addView(divider())
             switchRow(R.string.opt_autocap, null, prefs.autoCapitalize) { prefs.autoCapitalize = it }
             addView(divider())
             switchRow(R.string.opt_doublespace, null, prefs.doubleSpacePeriod) { prefs.doubleSpacePeriod = it }
         }
+
+        section(R.string.opt_theme)
+        card { themeRows(this) }
 
         section(R.string.sec_keys)
         card {
@@ -132,9 +132,9 @@ class SettingsActivity : Activity() {
             addView(divider())
             switchRow(R.string.opt_sound, null, prefs.sound) { prefs.sound = it }
             addView(divider())
-            addView(themeRow())
-            addView(divider())
             addView(heightRow())
+            addView(divider())
+            addView(marginRow())
         }
 
         section(R.string.sec_shortcuts)
@@ -235,37 +235,62 @@ class SettingsActivity : Activity() {
         return row
     }
 
-    private fun themeRow(): View {
+    private val themeLabels = mapOf(
+        "system" to R.string.theme_system, "light" to R.string.theme_light, "sand" to R.string.theme_sand,
+        "rose" to R.string.theme_rose, "dark" to R.string.theme_dark, "midnight" to R.string.theme_midnight,
+        "black" to R.string.theme_black,
+    )
+
+    private fun themeRows(box: LinearLayout) {
+        val marks = HashMap<String, TextView>()
+        fun paint() = marks.forEach { (k, v) -> v.text = if (prefs.theme == k) "✓" else "" }
+        KbTheme.NAMES.forEachIndexed { i, key ->
+            if (i > 0) box.addView(divider())
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(16), dp(13), dp(16), dp(13))
+                setOnClickListener { prefs.theme = key; paint() }
+            }
+            val th = KbTheme.byName(key, false)
+            // muestra de color: fondo + tecla
+            row.addView(View(this).apply {
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(6).toFloat()
+                    setColor(if (key == "system") 0xFF8E8E93.toInt() else th.bg)
+                    setStroke(dp(3), if (key == "system") 0xFF8E8E93.toInt() else th.letterKey)
+                }
+            }, LinearLayout.LayoutParams(dp(26), dp(20)).also { it.marginEnd = dp(14) })
+            row.addView(text(getString(themeLabels.getValue(key)), 17f, cText), LinearLayout.LayoutParams(0, -2, 1f))
+            val mark = text("", 18f, cAccent, bold = true)
+            marks[key] = mark
+            row.addView(mark)
+            box.addView(row)
+        }
+        paint()
+    }
+
+    private fun marginRow(): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(12), dp(16), dp(12))
         }
-        row.addView(text(getString(R.string.opt_theme), 17f, cText))
-        val seg = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(8), 0, 0) }
-        val options = listOf("system" to R.string.theme_system, "light" to R.string.theme_light, "dark" to R.string.theme_dark)
-        val buttons = ArrayList<Button>()
-        fun paint() {
-            options.forEachIndexed { i, (key, _) ->
-                val sel = prefs.theme == key
-                buttons[i].setTextColor(if (sel) Color.WHITE else cAccent)
-                buttons[i].background = GradientDrawable().apply {
-                    cornerRadius = dp(8).toFloat()
-                    setColor(if (sel) cAccent else if (dark) 0xFF2C2C2E.toInt() else 0xFFEFEFF4.toInt())
+        fun label(v: Int) = if (v == 0) getString(R.string.opt_margin_auto) else getString(R.string.opt_margin, v)
+        val l = text(label(prefs.bottomMargin), 17f, cText)
+        row.addView(l)
+        row.addView(text(getString(R.string.opt_margin_sub), 13f, cSub).apply { setPadding(0, dp(2), 0, 0) })
+        row.addView(SeekBar(this).apply {
+            max = 60
+            progress = prefs.bottomMargin
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(s: SeekBar, p: Int, fromUser: Boolean) {
+                    prefs.bottomMargin = p
+                    l.text = label(p)
                 }
-            }
-        }
-        options.forEach { (key, label) ->
-            val b = Button(this).apply {
-                text = getString(label)
-                isAllCaps = false
-                stateListAnimator = null
-                setOnClickListener { prefs.theme = key; paint() }
-            }
-            buttons.add(b)
-            seg.addView(b, LinearLayout.LayoutParams(0, dp(40), 1f).also { it.marginEnd = dp(6) })
-        }
-        paint()
-        row.addView(seg)
+                override fun onStartTrackingTouch(s: SeekBar) {}
+                override fun onStopTrackingTouch(s: SeekBar) {}
+            })
+        })
         return row
     }
 

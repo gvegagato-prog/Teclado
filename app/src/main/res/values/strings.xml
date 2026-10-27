@@ -8,8 +8,6 @@
     <string name="enter_send">Send</string>
     <string name="enter_next">Next</string>
     <string name="enter_done">Done</string>
-    <string name="lang_auto">Auto · %1$s</string>
-    <string name="lang_fixed">%1$s (fixed)</string>
 
     <string name="subtitle">Fast bilingual keyboard (English / Spanish)</string>
     <string name="sec_setup">Set up</string>
@@ -26,8 +24,6 @@
     <string name="opt_autocorrect">Auto-correction</string>
     <string name="opt_autocorrect_sub">Fixes the word when you press space or punctuation. Backspace undoes it.</string>
     <string name="opt_suggestions">Suggestions bar</string>
-    <string name="opt_autolang">Detect language automatically</string>
-    <string name="opt_autolang_sub">Spanish or English, based on what you are writing. The globe key forces one.</string>
     <string name="opt_autocap">Auto-capitalization</string>
     <string name="opt_doublespace">Double space inserts period</string>
 
@@ -40,6 +36,13 @@
     <string name="theme_system">System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
+    <string name="theme_sand">Sand</string>
+    <string name="theme_rose">Rose</string>
+    <string name="theme_midnight">Midnight</string>
+    <string name="theme_black">Black</string>
+    <string name="opt_margin">Bottom margin: %1$d dp</string>
+    <string name="opt_margin_auto">Bottom margin: automatic</string>
+    <string name="opt_margin_sub">Raise it if the system buttons overlap the bottom row</string>
     <string name="opt_height">Key height: %1$d%%</string>
 
     <string name="sec_shortcuts">Text shortcuts</string>

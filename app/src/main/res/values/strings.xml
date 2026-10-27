@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Teclado</string>
+    <string name="ime_name">Teclado EN/ES</string>
+
+    <string name="enter_go">Go</string>
+    <string name="enter_search">Search</string>
+    <string name="enter_send">Send</string>
+    <string name="enter_next">Next</string>
+    <string name="enter_done">Done</string>
+    <string name="lang_auto">Auto · %1$s</string>
+    <string name="lang_fixed">%1$s (fixed)</string>
+
+    <string name="subtitle">Fast bilingual keyboard (English / Spanish)</string>
+    <string name="sec_setup">Set up</string>
+    <string name="step_enable">1. Enable the keyboard</string>
+    <string name="step_enable_sub">Turn on “Teclado EN/ES” in the list</string>
+    <string name="step_select">2. Switch to it</string>
+    <string name="step_select_sub">Pick “Teclado EN/ES” as the active keyboard</string>
+    <string name="btn_open">Open</string>
+    <string name="btn_choose">Choose</string>
+    <string name="done_check">Done ✓</string>
+    <string name="try_hint">Try it here…</string>
+
+    <string name="sec_writing">Writing</string>
+    <string name="opt_autocorrect">Auto-correction</string>
+    <string name="opt_autocorrect_sub">Fixes the word when you press space or punctuation. Backspace undoes it.</string>
+    <string name="opt_suggestions">Suggestions bar</string>
+    <string name="opt_autolang">Detect language automatically</string>
+    <string name="opt_autolang_sub">Spanish or English, based on what you are writing. The globe key forces one.</string>
+    <string name="opt_autocap">Auto-capitalization</string>
+    <string name="opt_doublespace">Double space inserts period</string>
+
+    <string name="sec_keys">Keys</string>
+    <string name="opt_swipedown">Swipe down for numbers and symbols</string>
+    <string name="opt_swipedown_sub">Like on iPad: the small character on each key</string>
+    <string name="opt_haptics">Vibrate on keypress</string>
+    <string name="opt_sound">Sound on keypress</string>
+    <string name="opt_theme">Appearance</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="opt_height">Key height: %1$d%%</string>
+
+    <string name="sec_shortcuts">Text shortcuts</string>
+    <string name="shortcuts_hint">Type the shortcut and press space: it is replaced by the full text.</string>
+    <string name="shortcut_add">Add shortcut</string>
+    <string name="shortcut_edit">Edit shortcut</string>
+    <string name="shortcut_trigger">Shortcut (e.g. @@@)</string>
+    <string name="shortcut_text">Expands to…</string>
+    <string name="shortcut_invalid">The shortcut can’t be empty or contain spaces</string>
+    <string name="save">Save</string>
+    <string name="delete">Delete</string>
+    <string name="cancel">Cancel</string>
+
+    <string name="sec_learned">Learned words</string>
+    <plurals name="learned_count">
+        <item quantity="one">%1$d word</item>
+        <item quantity="other">%1$d words</item>
+    </plurals>
+    <string name="learned_clear">Forget all</string>
+
+    <string name="credits">Dictionaries derived from wordfreq (Robyn Speer), data under CC BY-SA 4.0.</string>
+</resources>

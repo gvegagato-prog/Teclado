@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Teclado</string>
+    <string name="ime_name">Teclado EN/ES</string>
+
+    <string name="enter_go">Ir</string>
+    <string name="enter_search">Buscar</string>
+    <string name="enter_send">Enviar</string>
+    <string name="enter_next">Sig.</string>
+    <string name="enter_done">Listo</string>
+    <string name="lang_auto">Auto · %1$s</string>
+    <string name="lang_fixed">%1$s (fijo)</string>
+
+    <string name="subtitle">Teclado bilingüe rápido (castellano / inglés)</string>
+    <string name="sec_setup">Configuración</string>
+    <string name="step_enable">1. Activa el teclado</string>
+    <string name="step_enable_sub">Enciende «Teclado EN/ES» en la lista</string>
+    <string name="step_select">2. Cámbiate a él</string>
+    <string name="step_select_sub">Elige «Teclado EN/ES» como teclado activo</string>
+    <string name="btn_open">Abrir</string>
+    <string name="btn_choose">Elegir</string>
+    <string name="done_check">Hecho ✓</string>
+    <string name="try_hint">Pruébalo aquí…</string>
+
+    <string name="sec_writing">Escritura</string>
+    <string name="opt_autocorrect">Autocorrección</string>
+    <string name="opt_autocorrect_sub">Corrige la palabra al pulsar espacio o puntuación. Borrar la deshace.</string>
+    <string name="opt_suggestions">Barra de sugerencias</string>
+    <string name="opt_autolang">Detectar el idioma automáticamente</string>
+    <string name="opt_autolang_sub">Castellano o inglés según lo que escribes. La tecla del globo fuerza uno.</string>
+    <string name="opt_autocap">Mayúscula automática</string>
+    <string name="opt_doublespace">Doble espacio escribe un punto</string>
+
+    <string name="sec_keys">Teclas</string>
+    <string name="opt_swipedown">Deslizar hacia abajo para números y símbolos</string>
+    <string name="opt_swipedown_sub">Como en el iPad: el carácter pequeño de cada tecla</string>
+    <string name="opt_haptics">Vibrar al pulsar</string>
+    <string name="opt_sound">Sonido al pulsar</string>
+    <string name="opt_theme">Apariencia</string>
+    <string name="theme_system">Sistema</string>
+    <string name="theme_light">Claro</string>
+    <string name="theme_dark">Oscuro</string>
+    <string name="opt_height">Altura de las teclas: %1$d%%</string>
+
+    <string name="sec_shortcuts">Atajos de texto</string>
+    <string name="shortcuts_hint">Escribe el atajo y pulsa espacio: se sustituye por el texto completo.</string>
+    <string name="shortcut_add">Añadir atajo</string>
+    <string name="shortcut_edit">Editar atajo</string>
+    <string name="shortcut_trigger">Atajo (p. ej. @@@)</string>
+    <string name="shortcut_text">Se convierte en…</string>
+    <string name="shortcut_invalid">El atajo no puede estar vacío ni contener espacios</string>
+    <string name="save">Guardar</string>
+    <string name="delete">Eliminar</string>
+    <string name="cancel">Cancelar</string>
+
+    <string name="sec_learned">Palabras aprendidas</string>
+    <plurals name="learned_count">
+        <item quantity="one">%1$d palabra</item>
+        <item quantity="other">%1$d palabras</item>
+    </plurals>
+    <string name="learned_clear">Olvidar todas</string>
+
+    <string name="credits">Diccionarios derivados de wordfreq (Robyn Speer), datos bajo CC BY-SA 4.0.</string>
+</resources>

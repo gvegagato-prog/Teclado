@@ -3,18 +3,32 @@
 Teclado para Android, rápido y limpio, con corrección en castellano e inglés y detección automática del idioma.
 
 ## Instalar
-1. En GitHub, pestaña **Actions** → último "Build APK" → artefacto `teclado-debug-apk` → descarga `app-debug.apk`
-   (el mismo workflow sube también `capturas-teclado`, con imágenes del teclado).
-   O compila: `./gradlew assembleDebug` (JDK 17+, Android SDK 36) → `app/build/outputs/apk/debug/app-debug.apk`.
-2. Instala el APK (permite "instalar apps desconocidas" para el navegador/gestor de archivos).
-3. Abre la app **Teclado**: *Activa el teclado* → *Cámbiate a él*.
+El APK firmado (versión release) se entrega directamente en la conversación con Claude. Instálalo y abre la app
+**Teclado**: *Activa el teclado* → *Cámbiate a él*.
 
-El APK está firmado con la clave de depuración incluida en el repo (`app/debug.keystore`), para que las
-actualizaciones se instalen encima. Sirve para uso personal, no para publicar en una tienda.
+Si tenías la versión de pruebas (0.1, firmada con la clave de depuración), desinstálala antes una vez:
+la firma ha cambiado y Android no deja instalar encima.
+
+### Compilar
+`./gradlew assembleRelease` (JDK 17+, Android SDK 36). La firma se lee de `keystore.properties` en la raíz
+(no está en el repo porque es público):
+```
+storeFile=/ruta/teclado-release.jks
+storePassword=...
+keyAlias=teclado
+keyPassword=...
+```
+Sin ese fichero, la release se genera sin firmar (es lo que hace GitHub Actions para verificar que compila).
 
 ## Funciones
-- Corrección en inglés y castellano; detecta en cuál escribes y corrige con ese diccionario.
-  Una palabra válida en el otro idioma no se toca. Borrar justo después revierte la corrección.
+- Corrección en inglés y castellano con detección automática del idioma. Nunca corrige una palabra que exista
+  en cualquiera de los dos idiomas (~280.000 palabras por idioma, conjugaciones raras, tecnicismos, coloquialismos,
+  verbos con pronombres pegados como «escanéalo»). Tampoco toca nombres propios a mitad de frase ni palabras que
+  ya hayas escrito antes en el mismo texto. Corrige errores de tecla vecina, letras cambiadas, tildes y ñ,
+  y errores "por sonido" del castellano (nesecito → necesito).
+- Tras corregir, la barra muestra «↶ original» para deshacer con un toque (o borra justo después).
+  Las palabras que mantienes, o que escribes dos veces, se aprenden; se gestionan en los ajustes.
+- Mantener borrar: primero letra a letra y, pasado un momento, palabra a palabra.
 - Deslizar una tecla hacia abajo escribe el número/símbolo pequeño (como en iPad).
 - Pulsación larga: tildes y variantes (á é í ó ú ü ñ ç…); en `.` también `? ! ¿ ¡ …`.
 - Atajos de texto (ajustes de la app): p. ej. `@@@` + espacio → tu correo.
@@ -24,4 +38,4 @@ actualizaciones se instalen encima. Sirve para uso personal, no para publicar en
 
 ## Desarrollo
 - `./gradlew testDebugUnitTest` — pruebas del motor, del flujo de edición y generación de capturas (`app/build/previews`).
-- `tools/gen_dicts.py` regenera los diccionarios (ver `NOTICE.md` para licencias).
+- `tools/gen_dicts.py` regenera los diccionarios; usa Hunspell (LibreOffice) solo para validar al generarlos (ver `NOTICE.md`).

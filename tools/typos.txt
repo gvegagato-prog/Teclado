@@ -68,3 +68,4 @@ en:vaccum
 es:haver
 es:aveces
 es:vien
+es:ademas

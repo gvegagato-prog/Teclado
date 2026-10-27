@@ -13,3 +13,9 @@ Los datos de wordfreq incluyen, entre otras fuentes citadas por su autora: Googl
 Leeds Internet Corpus, Wikipedia, ParaCrawl, OPUS OpenSubtitles 2018 (OpenSubtitles) y listas
 SUBTLEX (Marc Brysbaert et al.; se debe acreditar a los autores de SUBTLEX), además de datos de Twitter y
 Reddit agregados. Detalle completo en el README de wordfreq.
+
+## Validación con Hunspell (solo al generar)
+
+`tools/gen_dicts.py` consulta los diccionarios Hunspell en_US y es_ES del proyecto
+[LibreOffice/dictionaries](https://github.com/LibreOffice/dictionaries), mediante la biblioteca `spylls`, para no eliminar
+palabras válidas al limpiar erratas. Esos diccionarios no se incluyen en la app ni en este repositorio.

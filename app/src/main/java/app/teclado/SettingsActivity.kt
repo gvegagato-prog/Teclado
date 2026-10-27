@@ -84,8 +84,21 @@ class SettingsActivity : Activity() {
 
     private fun build() {
         content.removeAllViews()
-        content.addView(text(getString(R.string.app_name), 34f, cText, bold = true).apply { setPadding(dp(4), dp(24), 0, 0) })
-        content.addView(text(getString(R.string.subtitle), 15f, cSub).apply { setPadding(dp(4), dp(2), 0, dp(8)) })
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(24), 0, dp(8))
+        }
+        header.addView(android.widget.ImageView(this).apply {
+            setImageResource(R.mipmap.ic_launcher)
+            clipToOutline = true
+            background = GradientDrawable().apply { cornerRadius = dp(14).toFloat(); setColor(cAccent) }
+        }, LinearLayout.LayoutParams(dp(60), dp(60)).also { it.marginEnd = dp(14) })
+        val titles = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        titles.addView(text(getString(R.string.app_name), 30f, cText, bold = true))
+        titles.addView(text(getString(R.string.subtitle), 14f, cSub))
+        header.addView(titles)
+        content.addView(header)
 
         section(R.string.sec_setup)
         card {
@@ -148,8 +161,12 @@ class SettingsActivity : Activity() {
         }
 
         section(R.string.sec_learned)
+        content.addView(text(getString(R.string.learned_hint), 13f, cSub).apply { setPadding(dp(4), 0, dp(4), dp(8)) })
         card {
-            val l = text("", 17f, cText).apply { setPadding(dp(16), dp(14), dp(16), dp(14)) }
+            val l = text("", 17f, cText).apply {
+                setPadding(dp(16), dp(14), dp(16), dp(14))
+                setOnClickListener { manageLearned() }
+            }
             learnedLabel = l
             addView(l)
             addView(divider())
@@ -333,9 +350,24 @@ class SettingsActivity : Activity() {
         }
     }
 
+    private fun manageLearned() {
+        val words = prefs.learnedWords.sorted()
+        if (words.isEmpty()) return
+        val checked = BooleanArray(words.size)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.learned_manage)
+            .setMultiChoiceItems(words.toTypedArray(), checked) { _, i, v -> checked[i] = v }
+            .setPositiveButton(R.string.delete) { _, _ ->
+                prefs.learnedWords = words.filterIndexed { i, _ -> !checked[i] }.toSet()
+                refreshLearned()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     private fun refreshLearned() {
         val n = prefs.learnedWords.size
-        learnedLabel?.text = resources.getQuantityString(R.plurals.learned_count, n, n)
+        learnedLabel?.text = resources.getQuantityString(R.plurals.learned_count, n, n) + if (n > 0) "  ›" else ""
     }
 
     private fun refreshShortcuts() {

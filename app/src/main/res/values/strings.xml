@@ -61,6 +61,8 @@
         <item quantity="one">%1$d word</item>
         <item quantity="other">%1$d words</item>
     </plurals>
+    <string name="learned_hint">Words you keep after an autocorrection, or type twice, are learned and never corrected. Tap to review them.</string>
+    <string name="learned_manage">Select words to forget</string>
     <string name="learned_clear">Forget all</string>
 
     <string name="credits">Dictionaries derived from wordfreq (Robyn Speer), data under CC BY-SA 4.0.</string>

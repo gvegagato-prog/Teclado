@@ -18,7 +18,7 @@ import app.teclado.engine.SpellEngine
 
 open class TecladoService : InputMethodService(), KeyboardListener {
 
-    private enum class Kind { LITERAL, CORRECTION, COMPLETION, SHORTCUT }
+    private enum class Kind { LITERAL, CORRECTION, COMPLETION, SHORTCUT, REVERT }
     private class Sugg(val text: String, val kind: Kind)
     private class Correction(val original: String, val corrected: String, val suffix: String)
 
@@ -64,7 +64,7 @@ open class TecladoService : InputMethodService(), KeyboardListener {
             try {
                 val loaded = HashMap<Lang, Lexicon>()
                 for (l in Lang.values()) {
-                    assets.open("dict/${l.code}.tsv").bufferedReader().use { loaded[l] = Lexicon.parse(l, it) }
+                    loaded[l] = Lexicon.parse(l, assets.open("dict/${l.code}.tsv").use { it.readBytes() }.toString(Charsets.UTF_8))
                 }
                 lexicons = loaded
                 val eng = SpellEngine(loaded)
@@ -72,6 +72,8 @@ open class TecladoService : InputMethodService(), KeyboardListener {
                 detector = LanguageDetector(loaded[Lang.EN], loaded[Lang.ES], prefs.defaultLang)
                 engine = eng
                 ui.post { refreshSuggestions(); updateSpaceLabel() }
+                // índice de errores dobles: tarda un poco más, el teclado ya funciona mientras tanto
+                for (lex in loaded.values) lex.buildD2Index()
             } catch (_: Exception) {
                 // sin diccionario el teclado sigue funcionando, solo sin corrección
             }
@@ -152,6 +154,11 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     override fun onFinishInput() {
         super.onFinishInput()
         ui.removeCallbacks(resyncRunnable)
+    }
+
+    override fun onDestroy() {
+        worker.looper.quitSafely()
+        super.onDestroy()
     }
 
     override fun onUpdateSelection(
@@ -401,6 +408,22 @@ open class TecladoService : InputMethodService(), KeyboardListener {
             return
         }
         lastAC = null
+        if (first) deleteRepeats = 0 else deleteRepeats++
+        if (deleteRepeats > WORD_DELETE_AFTER) {
+            // mantenido un rato: borra palabra a palabra, como en iOS
+            val before = ic.getTextBeforeCursor(64, 0)?.toString() ?: ""
+            if (before.isNotEmpty()) {
+                var n = before.length
+                while (n > 0 && before[n - 1].isWhitespace()) n--
+                while (n > 0 && !before[n - 1].isWhitespace()) n--
+                val del = (before.length - n).coerceAtLeast(1)
+                ic.deleteSurroundingText(del, 0)
+                cursor = (cursor - del).coerceAtLeast(0)
+            }
+            tokenStale = true
+            scheduleResync()
+            return
+        }
         sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
         if (cursor > 0) cursor--
         if (!tokenStale && token.isNotEmpty()) token.setLength(token.length - 1) else tokenStale = true
@@ -441,7 +464,20 @@ open class TecladoService : InputMethodService(), KeyboardListener {
         val fixed: String = if (lang == Lang.EN && run == "i") "I" else {
             // CamelCase o siglas mezcladas: no tocar
             if (run.drop(1).any { it.isUpperCase() } && run.any { it.isLowerCase() }) return null
-            val c = eng.correction(lower, lang) ?: return null
+            val c = eng.correction(lower, lang, detector?.confident ?: false)
+            if (c == null) {
+                noteKeptWord(eng, lower)
+                return null
+            }
+            val before = ic.getTextBeforeCursor(400, 0)?.toString() ?: ""
+            val ctx = if (before.endsWith(run)) before.dropLast(run.length) else before
+            // Nombre propio: mayúscula a mitad de frase -> no se toca
+            if (run[0].isUpperCase() && !sentenceStart(ctx)) return null
+            // Ya la escribiste antes en este texto y la dejaste así -> es intencionada
+            if (Regex("(?<![\\p{L}'])" + Regex.escape(lower) + "(?![\\p{L}'])").containsMatchIn(ctx.lowercase())) {
+                noteKeptWord(eng, lower)
+                return null
+            }
             SpellEngine.matchCase(run, c)
         }
         if (fixed == run) return null
@@ -453,8 +489,36 @@ open class TecladoService : InputMethodService(), KeyboardListener {
         return Correction(run, fixed, suffix)
     }
 
+    private var deleteRepeats = 0
+    private val keptCounts = HashMap<String, Int>()
+
+    /** Palabra desconocida que el usuario deja tal cual: a la segunda vez se aprende. */
+    private fun noteKeptWord(eng: SpellEngine, lower: String) {
+        if (lower.length < 3 || eng.isKnown(lower)) return
+        val n = (keptCounts[lower] ?: 0) + 1
+        keptCounts[lower] = n
+        if (n >= 2) {
+            eng.userWords.add(lower)
+            prefs.learn(lower)
+            keptCounts.remove(lower)
+        }
+    }
+
+    private fun sentenceStart(ctx: String): Boolean {
+        val t = ctx.trimEnd { it == ' ' || it == '¿' || it == '¡' || it == '"' || it == '(' || it == '“' }
+        return t.isEmpty() || t.last() in ".!?\n…"
+    }
+
+    private val worker by lazy {
+        val t = android.os.HandlerThread("teclado-sugerencias")
+        t.start()
+        Handler(t.looper)
+    }
+    private var suggSeq = 0
+
     private fun refreshSuggestions() {
         val v = kb ?: return
+        suggSeq++
         java.util.Arrays.fill(current, null)
         if (!prefs.suggestions) { v.setSuggestions(emptyList()); return }
         val tok = token.toString()
@@ -462,24 +526,39 @@ open class TecladoService : InputMethodService(), KeyboardListener {
         val eng = engine
         val run = if (noSuggest) "" else wordRun()
         val primary = ArrayList<Sugg>()
-        var literal: Sugg? = null
         if (sc != null) primary.add(Sugg(sc.expansion, Kind.SHORTCUT))
-        if (run.isNotEmpty() && eng != null) {
-            val lang = currentLang()
-            val lower = run.lowercase()
-            val lex = lexicons[lang]
-            val known = eng.isKnown(lower, lang)
-            if (!known) {
-                literal = Sugg(run, Kind.LITERAL)
-                eng.suggest(lower, lang, 3).forEach {
-                    primary.add(Sugg(SpellEngine.matchCase(run, it.word), Kind.CORRECTION))
-                }
-            } else primary.add(Sugg(run, Kind.COMPLETION))
-            lex?.completions(lower, 4)?.forEach { w ->
-                val s = SpellEngine.matchCase(run, w)
-                if (primary.none { it.text.equals(s, true) } && !w.equals(lower, true)) primary.add(Sugg(s, Kind.COMPLETION))
-            }
+        val ac = lastAC
+        if (ac != null && tok.isEmpty() && sc == null) {
+            current[1] = Sugg(ac.original, Kind.REVERT)
+            v.setSuggestions(listOf(SuggestionItem(""), SuggestionItem("↶ " + ac.original), SuggestionItem("")))
+            return
         }
+        if (run.isEmpty() || eng == null) {
+            showSlots(primary, null)
+            return
+        }
+        // El cálculo de candidatas va en otro hilo para no frenar el tecleo; solo se muestra si sigue vigente.
+        val seq = ++suggSeq
+        val lang = currentLang()
+        worker.post {
+            val list = ArrayList(primary)
+            var lit: Sugg? = null
+            val lower = run.lowercase()
+            if (!eng.isKnown(lower)) {
+                lit = Sugg(run, Kind.LITERAL)
+                eng.suggest(lower, lang, 3).forEach { list.add(Sugg(SpellEngine.matchCase(run, it.word), Kind.CORRECTION)) }
+            } else list.add(Sugg(run, Kind.COMPLETION))
+            lexicons[lang]?.completions(lower, 4)?.forEach { w ->
+                val s = SpellEngine.matchCase(run, w)
+                if (list.none { it.text.equals(s, true) } && !w.equals(lower, true)) list.add(Sugg(s, Kind.COMPLETION))
+            }
+            ui.post { if (seq == suggSeq) showSlots(list, lit) }
+        }
+    }
+
+    private fun showSlots(primary: List<Sugg>, literal: Sugg?) {
+        val v = kb ?: return
+        java.util.Arrays.fill(current, null)
         if (literal != null) {
             current[0] = literal
             current[1] = primary.getOrNull(0)
@@ -505,6 +584,20 @@ open class TecladoService : InputMethodService(), KeyboardListener {
         val eng = engine
         ic.beginBatchEdit()
         when (s.kind) {
+            Kind.REVERT -> {
+                val ac = lastAC
+                if (ac != null) {
+                    ic.deleteSurroundingText(ac.corrected.length + ac.suffix.length, 0)
+                    ic.commitText(ac.original + ac.suffix, 1)
+                    cursor += ac.original.length - ac.corrected.length
+                    eng?.userWords?.add(ac.original.lowercase())
+                    prefs.learn(ac.original)
+                }
+                ic.endBatchEdit()
+                lastAC = null
+                refreshSuggestions()
+                return
+            }
             Kind.SHORTCUT -> {
                 ic.deleteSurroundingText(token.length, 0)
                 ic.commitText(s.text + " ", 1)
@@ -537,6 +630,7 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     }
 
     companion object {
+        private const val WORD_DELETE_AFTER = 14
         private const val BOUNDARY = "([{\"“«¿¡-"
     }
 }

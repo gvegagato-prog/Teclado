@@ -15,12 +15,8 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v6
-      - name: Tests y APK
-        run: ./gradlew testDebugUnitTest assembleDebug
-      - uses: actions/upload-artifact@v7
-        with:
-          name: teclado-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+      - name: Tests, lint y compilación release (sin firmar: la clave no está en el repo)
+        run: ./gradlew testDebugUnitTest lintRelease assembleRelease
       - uses: actions/upload-artifact@v7
         if: always()
         with:

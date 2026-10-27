@@ -61,6 +61,8 @@
         <item quantity="one">%1$d palabra</item>
         <item quantity="other">%1$d palabras</item>
     </plurals>
+    <string name="learned_hint">Las palabras que mantienes tras una corrección, o que escribes dos veces, se aprenden y no se vuelven a corregir. Toca para revisarlas.</string>
+    <string name="learned_manage">Elige las palabras a olvidar</string>
     <string name="learned_clear">Olvidar todas</string>
 
     <string name="credits">Diccionarios derivados de wordfreq (Robyn Speer), datos bajo CC BY-SA 4.0.</string>

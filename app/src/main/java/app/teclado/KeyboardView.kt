@@ -189,7 +189,7 @@ class KeyboardView(context: Context) : View(context) {
         val t = theme
         canvas.drawColor(t.bg)
         drawStrip(canvas, t)
-        val radius = dp(6f)
+        val radius = max(dp(5f), keyH * 0.12f)
         for (f in frames) {
             val pressed = isPressed(f)
             val enterAction = f.def.type == KeyType.ENTER && enterLabel != null

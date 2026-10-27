@@ -72,9 +72,9 @@ class ServiceFlowTest {
         start()
     }
 
-    private fun start(inputType: Int = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES) {
-        ed.text.setLength(0); ed.cursor = 0
-        val info = EditorInfo().apply { this.inputType = inputType }
+    private fun start(inputType: Int = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES, initial: String = "") {
+        ed.text.setLength(0); ed.text.append(initial); ed.cursor = initial.length
+        val info = EditorInfo().apply { this.inputType = inputType; initialSelStart = initial.length; initialSelEnd = initial.length }
         svc.onStartInputView(info, false)
     }
 
@@ -169,6 +169,37 @@ class ServiceFlowTest {
         backspace(); backspace(); backspace()
         type("teh ")
         assertEquals("The ", ed.text.toString())
+    }
+
+    @Test fun realRareWordsAreNeverCorrected() {
+        type("retoca el debug del commit y escanéalo luego ")
+        assertEquals("Retoca el debug del commit y escanéalo luego ", ed.text.toString())
+    }
+
+    @Test fun properNounsMidSentenceAreLeftAlone() {
+        type("ayer vi a Trosky en el bar ")
+        assertEquals("Ayer vi a Trosky en el bar ", ed.text.toString())
+    }
+
+    @Test fun wordAlreadyInTextIsIntentional() {
+        start(initial = "Notas sobre wolrd: ")
+        type("el wolrd ")
+        assertEquals("Notas sobre wolrd: el wolrd ", ed.text.toString())
+    }
+
+    @Test fun stripOffersUndoAfterAutocorrect() {
+        start(InputType.TYPE_CLASS_TEXT)
+        type("teh ")
+        assertEquals("the ", ed.text.toString())
+        svc.onSuggestion(1)
+        assertEquals("teh ", ed.text.toString())
+        type("teh ")
+        assertEquals("teh teh ", ed.text.toString()) // aprendida
+    }
+
+    @Test fun spanishPhoneticAndEnye() {
+        type("nesecito el telefono manana ")
+        assertEquals("Necesito el teléfono mañana ", ed.text.toString())
     }
 
     @Test fun typedLowercaseKeepsCase() {

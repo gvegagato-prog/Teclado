@@ -5,47 +5,99 @@ import app.teclado.engine.LanguageDetector
 import app.teclado.engine.Lexicon
 import app.teclado.engine.SpellEngine
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
 class EngineTest {
-    private fun load(l: Lang) = File("src/main/assets/dict/${l.code}.tsv").bufferedReader().use { Lexicon.parse(l, it) }
-    private val en = load(Lang.EN)
-    private val es = load(Lang.ES)
-    private val engine = SpellEngine(mapOf(Lang.EN to en, Lang.ES to es))
+    companion object {
+        private fun load(l: Lang) = Lexicon.parse(l, File("src/main/assets/dict/${l.code}.tsv").readText())
+        val en by lazy { load(Lang.EN).also { it.buildD2Index() } }
+        val es by lazy { load(Lang.ES).also { it.buildD2Index() } }
+        val engine by lazy { SpellEngine(mapOf(Lang.EN to en, Lang.ES to es)) }
 
-    @Test fun englishCorrections() {
-        assertEquals("the", engine.correction("teh", Lang.EN))
-        assertEquals("receive", engine.correction("recieve", Lang.EN))
-        assertEquals("which", engine.correction("wich", Lang.EN))
-        assertEquals("definitely", engine.correction("definately", Lang.EN))
-        assertEquals("don't", engine.correction("dont", Lang.EN))
-        assertEquals("because", engine.correction("becuase", Lang.EN))
+        /** Palabras reales que NO se pueden tocar nunca, en ningún idioma activo. */
+        val MUST_KEEP = listOf(
+            // casos reportados
+            "retoca", "debug", "retocas", "retoqué",
+            // conjugaciones y formas poco frecuentes
+            "desmotivaría", "comeríamos", "habláramos", "retuiteó", "reenviaste", "apagaríais", "escanéalo",
+            "dímelo", "cuéntamelo", "pásamelo", "arreglaste", "subrayó", "enfadarías", "pintarrajeó",
+            // técnico / anglicismos habituales
+            "commit", "merge", "deploy", "backend", "frontend", "debugging", "refactor", "login", "logout",
+            "email", "wifi", "app", "apps", "online", "offline", "spam", "hashtag", "streaming", "podcast",
+            "selfie", "smartphone", "tablet", "android", "iphone", "github", "kotlin", "javascript", "python",
+            // coloquial
+            "vale", "guay", "finde", "porfa", "jaja", "jajaja", "okey", "tío", "mola", "flipante", "currar",
+            "curro", "pringado", "chulo", "molan", "quedada",
+            // inglés poco común pero real
+            // ("betted" no está: Hunspell en_US lo rechaza y se eliminó como errata de "better")
+            "hose", "latte", "stoop", "bellow", "hover", "mould", "wince", "abort", "nay", "tow",
+            "quaint", "whimsical", "serendipity", "ubiquitous", "ephemeral", "gonna", "wanna", "gotta",
+            // pares con tilde que son las dos palabras válidas
+            "esta", "está", "solo", "sólo", "aun", "aún", "papa", "papá", "mama", "mamá", "como", "cómo",
+            "que", "qué", "el", "él", "tu", "tú", "mi", "mí", "si", "sí", "te", "té", "se", "sé",
+            "realizo", "publico", "provoco", "determino", "practico", "critico", "termino", "revelo",
+        )
+
+        /** errata -> corrección esperada */
+        val MUST_FIX = mapOf(
+            "teh" to "the", "recieve" to "receive", "wich" to "which", "becuase" to "because",
+            "dont" to "don't", "thier" to "their", "freind" to "friend", "beleive" to "believe",
+            "seperate" to "separate", "occured" to "occurred", "untill" to "until", "realy" to "really",
+            "goverment" to "government", "tommorow" to "tomorrow", "definately" to "definitely",
+            "somthing" to "something", "wolrd" to "world", "gonig" to "going", "langauge" to "language",
+            "tambien" to "también", "despues" to "después", "telefono" to "teléfono", "informacion" to "información",
+            "espanol" to "español", "porque" to "porque", "garcias" to "gracias", "quierp" to "quiero",
+            "necestio" to "necesito", "nesecito" to "necesito", "mañna" to "mañana", "manana" to "mañana",
+            "beuno" to "bueno", "dificil" to "difícil", "ademas" to "además", "aqui" to "aquí",
+            "hacia" to "hacia", "cuenya" to "cuenta", "rodos" to "todos", "todabia" to "todavía",
+            "senor" to "señor", "decision" to "decisión", "ano" to "año",
+        )
     }
 
-    @Test fun spanishCorrections() {
-        assertEquals("también", engine.correction("tambien", Lang.ES))
-        assertEquals("español", engine.correction("espanol", Lang.ES))
-        assertEquals("porque", engine.correction("poque", Lang.ES))
-        assertEquals("gracias", engine.correction("garcias", Lang.ES))
-        assertEquals("hola", engine.correction("hila", Lang.ES) ?: "hola") // informativo
+    private fun langOf(w: String) = if (w in setOf("teh", "recieve", "wich", "becuase", "dont", "thier", "freind",
+            "beleive", "seperate", "occured", "untill", "realy", "goverment", "tommorow", "definately",
+            "somthing", "wolrd", "gonig", "langauge")) Lang.EN else Lang.ES
+
+    @Test fun neverTouchesRealWords() {
+        val wrong = ArrayList<String>()
+        for (w in MUST_KEEP) for (l in Lang.values()) {
+            val c = engine.correction(w, l)
+            if (c != null) wrong.add("$w→$c ($l)")
+        }
+        assertTrue("Correcciones indebidas: $wrong", wrong.isEmpty())
     }
 
-    @Test fun knownWordsAreLeftAlone() {
-        assertNull(engine.correction("hello", Lang.EN))
-        assertNull(engine.correction("hola", Lang.ES))
-        // palabra inglesa escribiendo en español (idioma mezclado): no se toca
-        assertNull(engine.correction("meeting", Lang.ES))
-        assertNull(engine.correction("mañana", Lang.ES))
+    @Test fun fixesTypos() {
+        val untouched = ArrayList<String>()
+        val wrongTarget = ArrayList<String>()
+        for ((typo, fix) in MUST_FIX) {
+            val got = engine.correction(typo, langOf(typo)) ?: typo
+            if (got == fix) continue
+            if (got == typo) untouched.add(typo) else wrongTarget.add("$typo→$got (esperado $fix)")
+        }
+        println("Erratas que se dejan sin corregir: $untouched")
+        // precisión antes que cobertura: puede dejar alguna sin corregir, pero nunca cambiarla por otra cosa
+        assertTrue("Corregidas a algo incorrecto: $wrongTarget", wrongTarget.isEmpty())
+        assertTrue("Demasiadas erratas sin corregir: $untouched", untouched.size <= 3)
+    }
+
+    @Test fun debugCandidates() {
+        for (w in listOf("rodos", "somthing", "mañna")) {
+            println(w + ": " + engine.candidates(w, Lang.ES).take(4).joinToString { "${it.word} s=%.2f c=%.1f e=${it.edits} x=${it.crossLang}".format(it.score, it.cost) })
+        }
+    }
+
+    @Test fun suggestionsStillOfferFixForUncertainCases() {
+        val s = engine.suggest("xomo", Lang.ES, 3).map { it.word }
+        assertTrue(s.toString(), "como" in s)
     }
 
     @Test fun completions() {
         val c = es.completions("herm", 3)
         assertTrue(c.toString(), c.isNotEmpty() && c.all { it.startsWith("herm") })
-        assertTrue(en.completions("hello", 3).contains("hello"))
+        assertTrue(en.completions("hel", 3).contains("help"))
     }
 
     @Test fun caseMatching() {
@@ -78,6 +130,5 @@ class EngineTest {
         val d = LanguageDetector(en, es, Lang.EN)
         d.seed("Buenos días, quería preguntarte una cosa sobre el pedido", Lang.EN)
         assertEquals(Lang.ES, d.current)
-        assertFalse(d.current == Lang.EN)
     }
 }

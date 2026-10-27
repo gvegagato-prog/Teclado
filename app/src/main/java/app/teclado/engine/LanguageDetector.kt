@@ -12,6 +12,9 @@ class LanguageDetector(private val en: Lexicon?, private val es: Lexicon?, initi
         private set
     private var score = 0.0
 
+    /** false mientras no hay pruebas suficientes de un idioma (p. ej. al empezar a escribir). */
+    val confident: Boolean get() = kotlin.math.abs(score) >= SWITCH_THRESHOLD
+
     fun reset(lang: Lang) {
         score = 0.0
         current = lang
@@ -28,10 +31,10 @@ class LanguageDetector(private val en: Lexicon?, private val es: Lexicon?, initi
         val w = word.lowercase()
         if (w.length < 2 && w != "y" && w != "a" && w != "o") return
         var e = 0.0
-        val fEs = es?.freq(w) ?: 0
-        val fEn = en?.freq(w) ?: 0
+        val fEs = es?.freq(w) ?: 0.0
+        val fEn = en?.freq(w) ?: 0.0
         if (fEs > 0 || fEn > 0) {
-            e = ln((fEs + SMOOTH).toDouble() / (fEn + SMOOTH)).coerceIn(-MAX_VOTE, MAX_VOTE)
+            e = ln((fEs + SMOOTH) / (fEn + SMOOTH)).coerceIn(-MAX_VOTE, MAX_VOTE)
         }
         if (w.any { it in SPANISH_ONLY }) e += SPANISH_CHAR_BONUS
         score = score * DECAY + e
@@ -41,7 +44,7 @@ class LanguageDetector(private val en: Lexicon?, private val es: Lexicon?, initi
 
     companion object {
         private val WORD = Regex("[\\p{L}']+")
-        private const val SMOOTH = 500
+        private const val SMOOTH = 500.0
         private const val MAX_VOTE = 3.0
         private const val DECAY = 0.85
         private const val SWITCH_THRESHOLD = 1.5

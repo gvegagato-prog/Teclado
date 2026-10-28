@@ -23,6 +23,10 @@ import kotlin.math.min
 
 enum class Shift { OFF, ONCE, LOCK }
 
+enum class ClipAction { PICK, DELETE, PIN, UNPIN, EDIT_TITLE }
+
+class ClipEntry(val text: String, val title: String)
+
 class SuggestionItem(val label: String, val emphasized: Boolean = false)
 
 interface KeyboardListener {
@@ -33,9 +37,10 @@ interface KeyboardListener {
     fun onSuggestion(slot: Int)
     fun onPasteLatest()
     fun onClipboardOpened()
-    fun onClipboardPick(index: Int)
-    fun onClipboardDelete(index: Int)
+    fun onClipboardAction(action: ClipAction, pinned: Boolean, index: Int)
     fun onClipboardClear()
+    fun onTitleOk()
+    fun onTitleCancel()
 }
 
 /**
@@ -72,8 +77,20 @@ class KeyboardView(context: Context) : View(context) {
     var soundEnabled: Boolean = false
 
     // ---- portapapeles ----
-    var clipItems: List<String> = emptyList()
-        set(v) { field = v; wrapCache.clear(); clipScroll = clipScroll.coerceIn(0f, maxScroll()); invalidate() }
+    private var pinnedClips: List<ClipEntry> = emptyList()
+    private var recentClips: List<String> = emptyList()
+
+    fun setClips(pinned: List<ClipEntry>, recent: List<String>) {
+        pinnedClips = pinned
+        recentClips = recent
+        wrapCache.clear()
+        clipScroll = clipScroll.coerceIn(0f, maxScroll())
+        invalidate()
+    }
+
+    /** Texto del título que se está escribiendo con el teclado (null = no se edita ningún título). */
+    var titleEdit: String? = null
+        set(v) { field = v; invalidate() }
     var clipOpen = false
         private set
     private var clipScroll = 0f
@@ -88,6 +105,10 @@ class KeyboardView(context: Context) : View(context) {
         clipScroll = 0f
         if (clipOpen) listener?.onClipboardOpened()
         invalidate()
+    }
+
+    fun openClipboard() {
+        if (!clipOpen) toggleClipboard()
     }
 
     fun closeClipboard() {
@@ -276,26 +297,49 @@ class KeyboardView(context: Context) : View(context) {
         val slotW = (w - left) / 3f
         val cy = topPad + stripH / 2f
         // botones: pegar y portapapeles
+        val editing = titleEdit != null
         for (b in 0..1) {
             btnRect(b, tmp)
             val pressed = pointers.valueAtOrNull { it.mode == Mode.BUTTON && it.slot == b } != null
-            val active = b == 1 && clipOpen
+            val active = (b == 1 && (clipOpen || editing))
             fill.color = if (active) t.accent else if (pressed) t.letterKeyPressed else t.letterKey
             shadowPaint.color = t.shadow
             canvas.drawRoundRect(tmp.left, tmp.top + dp(1f), tmp.right, tmp.bottom + dp(1f), dp(8f), dp(8f), shadowPaint)
             canvas.drawRoundRect(tmp, dp(8f), dp(8f), fill)
-            drawClipIcon(canvas, tmp.centerX(), tmp.centerY(), btnSize * 0.27f, if (active) t.onAccent else t.text, paste = b == 0)
+            val ic = if (active) t.onAccent else t.text
+            if (editing) {
+                if (b == 0) drawCross(canvas, tmp.centerX(), tmp.centerY(), btnSize * 0.2f, ic)
+                else drawCheck(canvas, tmp.centerX(), tmp.centerY(), btnSize * 0.22f, ic)
+            } else drawClipIcon(canvas, tmp.centerX(), tmp.centerY(), btnSize * 0.27f, ic, paste = b == 0)
+        }
+        if (editing) {
+            textPaint.textSize = stripH * 0.36f
+            textPaint.typeface = regular
+            textPaint.textAlign = Paint.Align.LEFT
+            val label = context.getString(R.string.clip_title_label)
+            textPaint.color = t.subtle
+            canvas.drawText(label, left, centerBaseline(cy), textPaint)
+            val lw = textPaint.measureText(label) + dp(6f)
+            textPaint.color = t.text
+            textPaint.typeface = medium
+            var shown = titleEdit ?: ""
+            val avail = w - left - lw - dp(14f)
+            while (shown.length > 1 && textPaint.measureText("…$shown|") > avail) shown = shown.drop(1).let { it }
+            val prefix = if (shown.length < (titleEdit ?: "").length) "…" else ""
+            canvas.drawText("$prefix$shown|", left + lw, centerBaseline(cy), textPaint)
+            textPaint.textAlign = Paint.Align.CENTER
+            return
         }
         if (clipOpen) {
             textPaint.textSize = stripH * 0.36f
             textPaint.typeface = medium
             textPaint.color = t.text
             textPaint.textAlign = Paint.Align.LEFT
-            canvas.drawText(context.getString(R.string.clip_title, clipItems.size), left, centerBaseline(cy), textPaint)
+            canvas.drawText(context.getString(R.string.clip_title, pinnedClips.size + recentClips.size), left, centerBaseline(cy), textPaint)
             textPaint.textAlign = Paint.Align.RIGHT
             textPaint.color = if (clearArmed) 0xFFFF3B30.toInt() else t.accent
             val clearLabel = context.getString(if (clearArmed) R.string.clip_clear_confirm else R.string.clip_clear)
-            if (clipItems.isNotEmpty()) canvas.drawText(clearLabel, w - dp(14f), centerBaseline(cy), textPaint)
+            if (recentClips.isNotEmpty()) canvas.drawText(clearLabel, w - dp(14f), centerBaseline(cy), textPaint)
             textPaint.textAlign = Paint.Align.CENTER
             return
         }
@@ -341,13 +385,73 @@ class KeyboardView(context: Context) : View(context) {
 
     private val tmp2 = RectF()
 
+    private fun drawCross(c: Canvas, cx: Float, cy: Float, k: Float, color: Int) {
+        strokeStyle(color, k * 2f)
+        c.drawLine(cx - k, cy - k, cx + k, cy + k, stroke)
+        c.drawLine(cx - k, cy + k, cx + k, cy - k, stroke)
+    }
+
+    private fun drawCheck(c: Canvas, cx: Float, cy: Float, k: Float, color: Int) {
+        strokeStyle(color, k * 2f)
+        c.drawLine(cx - k, cy, cx - k * 0.3f, cy + k * 0.75f, stroke)
+        c.drawLine(cx - k * 0.3f, cy + k * 0.75f, cx + k, cy - k * 0.7f, stroke)
+    }
+
+    /** Chincheta: cabeza redonda y aguja; rellena cuando está fijada. */
+    private fun drawPin(c: Canvas, cx: Float, cy: Float, k: Float, color: Int, filled: Boolean) {
+        strokeStyle(color, k * 1.6f)
+        c.save()
+        c.rotate(35f, cx, cy)
+        tmp2.set(cx - k * 0.55f, cy - k * 1.1f, cx + k * 0.55f, cy + k * 0.1f)
+        if (filled) { fill.color = color; c.drawRoundRect(tmp2, k * 0.2f, k * 0.2f, fill) } else c.drawRoundRect(tmp2, k * 0.2f, k * 0.2f, stroke)
+        c.drawLine(cx - k * 0.9f, cy + k * 0.1f, cx + k * 0.9f, cy + k * 0.1f, stroke)
+        c.drawLine(cx, cy + k * 0.1f, cx, cy + k * 1.2f, stroke)
+        c.restore()
+    }
+
+    private fun drawPencil(c: Canvas, cx: Float, cy: Float, k: Float, color: Int) {
+        strokeStyle(color, k * 1.3f)
+        c.save()
+        c.rotate(-45f, cx, cy)
+        // cuerpo del lápiz + punta
+        path.reset()
+        path.moveTo(cx - k * 1.35f, cy)
+        path.lineTo(cx - k * 0.7f, cy - k * 0.6f)
+        path.lineTo(cx + k * 1.15f, cy - k * 0.6f)
+        path.lineTo(cx + k * 1.15f, cy + k * 0.6f)
+        path.lineTo(cx - k * 0.7f, cy + k * 0.6f)
+        path.close()
+        c.drawPath(path, stroke)
+        c.drawLine(cx - k * 0.7f, cy - k * 0.6f, cx - k * 0.7f, cy + k * 0.6f, stroke)
+        c.restore()
+    }
+
     // ---- panel del historial ----
     private val panelTop get() = rowsTop
     private val panelBottom get() = rowsTop + rows.size * keyH + (rows.size - 1) * gapY
     private val itemH get() = keyH * 1.05f
     private val itemGap get() = dp(6f)
+    /** Fila del panel: cabecera ("Fijadas"/"Recientes") o tarjeta (fijada o reciente). */
+    private class PRow(val kind: Int, val idx: Int, val y: Float, val h: Float)
+
+    private fun panelRows(): List<PRow> {
+        val out = ArrayList<PRow>()
+        var y = 0f
+        val head = keyH * 0.55f
+        if (pinnedClips.isNotEmpty()) {
+            out.add(PRow(0, 0, y, head)); y += head
+            for (i in pinnedClips.indices) { out.add(PRow(2, i, y, itemH)); y += itemH + itemGap }
+        }
+        if (recentClips.isNotEmpty()) {
+            if (pinnedClips.isNotEmpty()) { out.add(PRow(1, 0, y, head)); y += head }
+            for (i in recentClips.indices) { out.add(PRow(3, i, y, itemH)); y += itemH + itemGap }
+        }
+        return out
+    }
+
     private fun maxScroll(): Float {
-        val content = clipItems.size * (itemH + itemGap) - itemGap
+        val last = panelRows().lastOrNull() ?: return 0f
+        val content = last.y + last.h
         return maxOf(0f, content - (panelBottom - panelTop))
     }
 
@@ -380,7 +484,7 @@ class KeyboardView(context: Context) : View(context) {
         val bottom = panelBottom
         canvas.save()
         canvas.clipRect(0f, top - dp(2f), width.toFloat(), bottom + dp(4f))
-        if (clipItems.isEmpty()) {
+        if (pinnedClips.isEmpty() && recentClips.isEmpty()) {
             textPaint.typeface = regular
             textPaint.textSize = keyH * 0.3f
             textPaint.color = t.subtle
@@ -389,33 +493,70 @@ class KeyboardView(context: Context) : View(context) {
             return
         }
         val side = dp(8f)
-        val textW = width - 2 * side - dp(16f) - dp(52f)
-        textPaint.textSize = keyH * 0.3f
-        textPaint.typeface = regular
+        val zone = dp(52f)
+        val textW = width - 2 * side - dp(16f) - 2 * zone + dp(8f)
         textPaint.textAlign = Paint.Align.LEFT
-        for (i in clipItems.indices) {
-            val y = top - clipScroll + i * (itemH + itemGap)
-            if (y + itemH < top || y > bottom) continue
-            tmp.set(side, y, width - side, y + itemH)
+        for (r in panelRows()) {
+            val y = top - clipScroll + r.y
+            if (y + r.h < top || y > bottom) continue
+            if (r.kind < 2) {
+                textPaint.typeface = medium
+                textPaint.textSize = keyH * 0.27f
+                textPaint.color = t.subtle
+                val label = context.getString(if (r.kind == 0) R.string.clip_pinned else R.string.clip_recent).uppercase()
+                canvas.drawText(label, side + dp(8f), centerBaseline(y + r.h / 2f), textPaint)
+                continue
+            }
+            val pinned = r.kind == 2
+            tmp.set(side, y, width - side, y + r.h)
             shadowPaint.color = t.shadow
             canvas.drawRoundRect(tmp.left, tmp.top + dp(1f), tmp.right, tmp.bottom + dp(1f), dp(8f), dp(8f), shadowPaint)
             fill.color = t.letterKey
             canvas.drawRoundRect(tmp, dp(8f), dp(8f), fill)
-            val lines = wrap(clipItems[i], textW)
-            textPaint.color = t.text
+            if (pinned) {
+                fill.color = t.accent
+                canvas.save()
+                canvas.clipRect(tmp.left, tmp.top, tmp.left + dp(4f), tmp.bottom)
+                canvas.drawRoundRect(tmp, dp(8f), dp(8f), fill)
+                canvas.restore()
+            }
             val lh = keyH * 0.36f
-            val startY = y + itemH / 2f - (lines.size - 1) * lh / 2f
-            for ((k, ln) in lines.withIndex()) canvas.drawText(ln, side + dp(16f), centerBaseline(startY + k * lh), textPaint)
-            // borrar
-            val dx = width - side - dp(26f)
-            val dy = y + itemH / 2f
-            strokeStyle(t.hint, keyH * 0.14f)
-            val k = keyH * 0.09f
-            canvas.drawLine(dx - k, dy - k, dx + k, dy + k, stroke)
-            canvas.drawLine(dx - k, dy + k, dx + k, dy - k, stroke)
+            val cx0 = side + dp(16f)
+            textPaint.textSize = keyH * 0.3f
+            if (pinned) {
+                val e = pinnedClips[r.idx]
+                if (e.title.isNotEmpty()) {
+                    textPaint.typeface = medium
+                    textPaint.color = t.text
+                    canvas.drawText(ellipsize(e.title, textW), cx0, centerBaseline(y + r.h / 2f - lh * 0.45f), textPaint)
+                    textPaint.typeface = regular
+                    textPaint.textSize = keyH * 0.26f
+                    textPaint.color = t.subtle
+                    canvas.drawText(wrap(e.text, textW).firstOrNull() ?: "", cx0, centerBaseline(y + r.h / 2f + lh * 0.55f), textPaint)
+                } else drawCardText(canvas, wrap(e.text, textW), cx0, y, r.h, lh, t)
+            } else drawCardText(canvas, wrap(recentClips[r.idx], textW), cx0, y, r.h, lh, t)
+            // acciones: [fijar / editar título] [borrar / desfijar]
+            val cy = y + r.h / 2f
+            val k = keyH * 0.11f
+            val x2 = width - side - zone / 2f
+            val x1 = x2 - zone
+            if (pinned) {
+                drawPencil(canvas, x1, cy, k, t.hint)
+                drawPin(canvas, x2, cy, k, t.accent, filled = true)
+            } else {
+                drawPin(canvas, x1, cy, k, t.hint, filled = false)
+                drawCross(canvas, x2, cy, k * 0.85f, t.hint)
+            }
         }
         textPaint.textAlign = Paint.Align.CENTER
         canvas.restore()
+    }
+
+    private fun drawCardText(c: Canvas, lines: List<String>, x: Float, y: Float, h: Float, lh: Float, t: KbTheme) {
+        textPaint.typeface = regular
+        textPaint.color = t.text
+        val startY = y + h / 2f - (lines.size - 1) * lh / 2f
+        for ((k, ln) in lines.withIndex()) c.drawText(ln, x, centerBaseline(startY + k * lh), textPaint)
     }
 
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
@@ -440,13 +581,18 @@ class KeyboardView(context: Context) : View(context) {
         }
 
         override fun onSingleTapUp(e: MotionEvent): Boolean {
+            if (e.y < panelTop) return true
             val rel = e.y - panelTop + clipScroll
-            val idx = (rel / (itemH + itemGap)).toInt()
-            if (e.y < panelTop || idx !in clipItems.indices || rel - idx * (itemH + itemGap) > itemH) return true
+            val r = panelRows().firstOrNull { rel >= it.y && rel <= it.y + it.h && it.kind >= 2 } ?: return true
             feedback()
-            if (e.x > width - dp(64f)) listener?.onClipboardDelete(idx) else {
-                listener?.onClipboardPick(idx)
+            val pinned = r.kind == 2
+            val zone = dp(52f) + dp(8f)
+            val action = when {
+                e.x > width - zone -> if (pinned) ClipAction.UNPIN else ClipAction.DELETE
+                e.x > width - 2 * zone + dp(8f) -> if (pinned) ClipAction.EDIT_TITLE else ClipAction.PIN
+                else -> ClipAction.PICK
             }
+            listener?.onClipboardAction(action, pinned, r.idx)
             return true
         }
     })
@@ -762,7 +908,7 @@ class KeyboardView(context: Context) : View(context) {
             tmp.inset(-pad, -pad)
             if (tmp.contains(x, y)) return b
         }
-        if (clipOpen && clipItems.isNotEmpty()) {
+        if (clipOpen && recentClips.isNotEmpty() && titleEdit == null) {
             clearRect(tmp)
             if (tmp.contains(x, y)) return 2
         }
@@ -785,7 +931,7 @@ class KeyboardView(context: Context) : View(context) {
             p.mode = Mode.STRIP
             val left = stripLeft
             p.slot = ((x - left) / ((width - left) / 3f)).toInt().coerceIn(0, 2)
-            if (clipOpen || x < left || slots[p.slot] == null) p.mode = Mode.IGNORED
+            if (clipOpen || titleEdit != null || x < left || slots[p.slot] == null) p.mode = Mode.IGNORED
             invalidate()
             return
         }
@@ -920,8 +1066,8 @@ class KeyboardView(context: Context) : View(context) {
         when (p.mode) {
             Mode.STRIP -> if (p.slot >= 0) listener?.onSuggestion(p.slot)
             Mode.BUTTON -> when (p.slot) {
-                0 -> listener?.onPasteLatest()
-                1 -> toggleClipboard()
+                0 -> if (titleEdit != null) listener?.onTitleCancel() else listener?.onPasteLatest()
+                1 -> if (titleEdit != null) listener?.onTitleOk() else toggleClipboard()
                 2 -> if (clearArmed) {
                     clearArmed = false
                     listener?.onClipboardClear()

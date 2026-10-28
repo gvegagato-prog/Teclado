@@ -34,6 +34,7 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     internal val shiftState get() = shift
     internal val layerState get() = layer
     internal val clipHistory get() = clipStore.items
+    internal val clipPinned get() = clipStore.pinned
     internal val splitGapState get() = kb?.splitGap ?: -1f
     @Volatile private var detector: LanguageDetector? = null
     private var lexicons: Map<Lang, Lexicon> = emptyMap()
@@ -79,7 +80,7 @@ open class TecladoService : InputMethodService(), KeyboardListener {
             val item = clip.getItemAt(0)
             if (item.text == null && item.uri != null) return
             val text = item.coerceToText(this)?.toString() ?: return
-            if (clipStore.add(text)) kb?.clipItems = clipStore.items
+            if (clipStore.add(text)) pushClips()
         } catch (_: Exception) {
             // sin acceso al portapapeles (p. ej. la app no es el teclado activo): se ignora
         }
@@ -104,24 +105,72 @@ open class TecladoService : InputMethodService(), KeyboardListener {
         pasteText(text)
     }
 
-    override fun onClipboardOpened() {
-        kb?.clipItems = clipStore.items
+    private fun pushClips() {
+        kb?.setClips(clipStore.pinned.map { ClipEntry(it.text, it.title) }, clipStore.items)
     }
 
-    override fun onClipboardPick(index: Int) {
-        val t = clipStore.items.getOrNull(index) ?: return
-        kb?.closeClipboard()
-        pasteText(t)
-    }
+    override fun onClipboardOpened() = pushClips()
 
-    override fun onClipboardDelete(index: Int) {
-        clipStore.remove(index)
-        kb?.clipItems = clipStore.items
+    override fun onClipboardAction(action: ClipAction, pinned: Boolean, index: Int) {
+        when (action) {
+            ClipAction.PICK -> {
+                val t = (if (pinned) clipStore.pinned.getOrNull(index)?.text else clipStore.items.getOrNull(index)) ?: return
+                kb?.closeClipboard()
+                pasteText(t)
+            }
+            ClipAction.DELETE -> { clipStore.remove(index); pushClips() }
+            ClipAction.UNPIN -> { clipStore.unpin(index); pushClips() }
+            ClipAction.PIN -> if (clipStore.pin(index)) { pushClips(); startTitleEdit(0) }
+            ClipAction.EDIT_TITLE -> startTitleEdit(index)
+        }
     }
 
     override fun onClipboardClear() {
         clipStore.clear()
-        kb?.clipItems = clipStore.items
+        pushClips()
+    }
+
+    // ---- títulos de las copias fijadas: se escriben con el propio teclado, en la barra superior ----
+    private var titleIdx = -1
+    private val titleBuf = StringBuilder()
+    private fun editingTitle() = titleIdx >= 0
+
+    private fun startTitleEdit(index: Int) {
+        val p = clipStore.pinned.getOrNull(index) ?: return
+        titleIdx = index
+        titleBuf.setLength(0)
+        titleBuf.append(p.title)
+        kb?.closeClipboard()
+        kb?.titleEdit = titleBuf.toString()
+        if (titleBuf.isEmpty()) { shift = Shift.ONCE; kb?.shift = shift }
+    }
+
+    private fun titleAppend(t: String) {
+        if (titleBuf.length + t.length <= ClipStore.MAX_TITLE) titleBuf.append(t)
+        kb?.titleEdit = titleBuf.toString()
+        if (shift == Shift.ONCE) { shift = Shift.OFF; kb?.shift = shift }
+    }
+
+    private fun titleDelete() {
+        if (titleBuf.isNotEmpty()) titleBuf.setLength(titleBuf.length - 1)
+        kb?.titleEdit = titleBuf.toString()
+    }
+
+    private fun endTitleEdit() {
+        titleIdx = -1
+        kb?.titleEdit = null
+        pushClips()
+        kb?.openClipboard()
+    }
+
+    override fun onTitleOk() {
+        if (!editingTitle()) return
+        clipStore.setTitle(titleIdx, titleBuf.toString())
+        endTitleEdit()
+    }
+
+    override fun onTitleCancel() {
+        if (editingTitle()) endTitleEdit()
     }
 
     override fun onCreate() {
@@ -200,8 +249,10 @@ open class TecladoService : InputMethodService(), KeyboardListener {
             clipEpochSeen = prefs.clipEpoch
             clipStore.clear()
         }
+        titleIdx = -1
+        kb?.titleEdit = null
         kb?.closeClipboard()
-        kb?.clipItems = clipStore.items
+        pushClips()
         inputType = info.inputType
         val cls = inputType and InputType.TYPE_MASK_CLASS
         val variation = inputType and InputType.TYPE_MASK_VARIATION
@@ -359,6 +410,7 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     // ---------- teclas ----------
 
     override fun onChar(text: String) {
+        if (editingTitle()) { titleAppend(text); return }
         val ic = currentInputConnection ?: return
         ensureToken()
         doubleSpaceArmed = false
@@ -398,6 +450,14 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     }
 
     override fun onSpecial(type: KeyType) {
+        if (editingTitle()) {
+            when (type) {
+                KeyType.SPACE -> { titleAppend(" "); return }
+                KeyType.DELETE -> { titleDelete(); return }
+                KeyType.ENTER -> { onTitleOk(); return }
+                else -> {}
+            }
+        }
         when (type) {
             KeyType.SHIFT -> {
                 val now = SystemClock.uptimeMillis()
@@ -491,6 +551,7 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     override fun onDeleteRepeat() = handleDelete(false)
 
     private fun handleDelete(first: Boolean) {
+        if (editingTitle()) { titleDelete(); return }
         val ic = currentInputConnection ?: return
         doubleSpaceArmed = false
         pendingAutoSpace = false
@@ -618,6 +679,7 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     private var suggSeq = 0
 
     private fun refreshSuggestions() {
+        if (editingTitle()) return
         val v = kb ?: return
         suggSeq++
         java.util.Arrays.fill(current, null)

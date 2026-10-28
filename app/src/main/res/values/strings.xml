@@ -55,13 +55,16 @@
     <string name="clip_empty">Nothing copied yet</string>
     <string name="sec_clipboard">Clipboard</string>
     <string name="opt_clip_history">Keep clipboard history</string>
-    <string name="opt_clip_history_sub">The last 50 text copies, with no time limit, stored only on this device. Texts that password managers mark as sensitive are not saved.</string>
+    <string name="opt_clip_history_sub">The last 50 text copies, with no time limit, stored only on this device. You can also pin copies and give them a title. Texts that password managers mark as sensitive are not saved.</string>
     <plurals name="clip_count">
         <item quantity="one">%1$d saved copy</item>
         <item quantity="other">%1$d saved copies</item>
     </plurals>
     <string name="clip_clear_all">Clear clipboard history</string>
-    <string name="clip_clear_all_confirm">Delete all saved copies?</string>
+    <string name="clip_clear_all_confirm">Delete all recent copies? Pinned copies are kept.</string>
+    <string name="clip_pinned">Pinned</string>
+    <string name="clip_recent">Recent</string>
+    <string name="clip_title_label">Title:</string>
     <string name="opt_height">Key height: %1$d%%</string>
 
     <string name="sec_shortcuts">Text shortcuts</string>

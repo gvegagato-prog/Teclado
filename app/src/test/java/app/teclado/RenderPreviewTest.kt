@@ -89,16 +89,25 @@ class RenderPreviewTest {
 
         for (dark in listOf(false, true)) {
             val v = make(if (dark) KbTheme.DARK else KbTheme.LIGHT)
-            v.clipItems = listOf(
-                "gonvegato@gmail.com",
-                "Hola, te escribo para confirmar la reunión del jueves a las 10:30 en la oficina de Madrid. Si no te viene bien, dime y buscamos otro hueco.",
-                "https://github.com/gvegagato-prog/Teclado",
-                "ES76 2077 0024 0031 0257 5766",
-                "Segunda línea\ntercera línea",
-            ) + (1..20).map { "copia número $it" }
+            v.setClips(
+                listOf(ClipEntry("dsrsfsxd", "Contraseña wifi casa"), ClipEntry("gonvegato@gmail.com", "Mi correo"), ClipEntry("ES76 2077 0024 0031 0257 5766", "")),
+                listOf(
+                    "Hola, te escribo para confirmar la reunión del jueves a las 10:30 en la oficina de Madrid. Si no te viene bien, dime y buscamos otro hueco.",
+                    "https://github.com/gvegagato-prog/Teclado",
+                    "Segunda línea\ntercera línea",
+                ) + (1..20).map { "copia número $it" })
             v.toggleClipboard()
             save(v, if (dark) "clipboard_dark" else "clipboard_light")
         }
+
+        val rec = make(KbTheme.DARK)
+        rec.setClips(emptyList(), listOf("https://github.com/gvegagato-prog/Teclado", "Hola, te escribo para confirmar la reunión del jueves a las 10:30 en la oficina de Madrid. Si no te viene bien, dime y buscamos otro hueco.", "copia 3"))
+        rec.toggleClipboard()
+        save(rec, "clipboard_recent_only_dark")
+
+        val edit = make(KbTheme.LIGHT)
+        edit.titleEdit = "Contraseña wifi casa"
+        save(edit, "clipboard_title_edit")
 
         val split = make(KbTheme.LIGHT, 1680)
         split.splitGap = 0.22f

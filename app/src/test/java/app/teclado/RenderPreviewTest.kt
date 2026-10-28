@@ -87,6 +87,25 @@ class RenderPreviewTest {
         save(pop, "light_longpress_a")
         touch(pop, MotionEvent.ACTION_UP, ax, ay)
 
+        val split = make(KbTheme.LIGHT, 2000)
+        split.splitGap = 0.28f
+        split.setSuggestions(listOf(SuggestionItem("\"helo\""), SuggestionItem("hello", true), SuggestionItem("help")))
+        save(split, "split_letters")
+        val splitSym = make(KbTheme.DARK, 2000)
+        splitSym.splitGap = 0.28f
+        splitSym.layer = Layer.SYM1
+        save(splitSym, "split_symbols_dark")
+
+        for ((name, kind, signed, dec) in listOf(
+            Quad("numpad_number", PadKind.NUMBER, true, true), Quad("numpad_phone", PadKind.PHONE, false, false),
+            Quad("numpad_int", PadKind.NUMBER, false, false))) {
+            val v = make(KbTheme.LIGHT, 1600)
+            v.setNumpad(Layouts.numpad(kind, signed, dec))
+            v.layer = Layer.NUMPAD
+            v.enterLabel = "Listo"
+            save(v, name)
+        }
+
         for (name in listOf("sand", "rose", "midnight", "black")) {
             val v = make(KbTheme.byName(name, false))
             v.setSuggestions(listOf(SuggestionItem("\"helo\""), SuggestionItem("hello", true), SuggestionItem("help")))
@@ -107,3 +126,5 @@ class RenderPreviewTest {
         return r.centerX() to r.centerY()
     }
 }
+
+data class Quad(val name: String, val kind: PadKind, val signed: Boolean, val dec: Boolean)

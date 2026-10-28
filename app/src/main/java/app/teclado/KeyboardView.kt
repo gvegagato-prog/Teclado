@@ -87,8 +87,20 @@ class KeyboardView(context: Context) : View(context) {
     private var stripH = 0f
     private var rowsTop = 0f
 
+    private var numpadRows: List<List<KeyDef>> = Layouts.numpad(PadKind.NUMBER, signed = false, decimal = false)
+
+    /** Teclas del modo numérico (campos de número, teléfono, fecha). */
+    fun setNumpad(r: List<List<KeyDef>>) {
+        numpadRows = r
+        if (layer == Layer.NUMPAD) { rebuild(); requestLayout(); invalidate() }
+    }
+
+    /** Hueco central del teclado dividido como fracción del ancho (0 = teclado normal). */
+    var splitGap: Float = 0f
+        set(v) { if (field != v) { field = v; rebuild(); requestLayout(); invalidate() } }
+
     private fun rebuild() {
-        rows = Layouts.rows(layer)
+        rows = if (layer == Layer.NUMPAD) numpadRows else Layouts.rows(layer)
         layoutKeys(width)
     }
 
@@ -111,17 +123,30 @@ class KeyboardView(context: Context) : View(context) {
         topPad = dp(2f)
         stripH = keyH * 0.95f
         rowsTop = topPad + stripH
-        val avail = w - 2 * sidePad
-        for ((r, row) in rows.withIndex()) {
-            val sum = row.sumOf { it.weight.toDouble() }.toFloat()
-            val unit = (avail - gapX * (row.size - 1)) / sum
-            var x = sidePad
+        val full = w - 2 * sidePad
+        val numpad = layer == Layer.NUMPAD
+        val avail = if (numpad) minOf(full, dp(440f)) else full
+        val x0 = (w - avail) / 2f
+        val halves = if (splitGap > 0f && !numpad) Layouts.splitRows(layer) else null
+        for (r in rows.indices) {
             val y = rowsTop + r * (keyH + gapY)
-            for (k in row) {
-                val kw = unit * k.weight
-                if (k.type != KeyType.SPACER) frames.add(KeyFrame(k, r, RectF(x, y, x + kw, y + keyH)))
-                x += kw + gapX
-            }
+            if (halves != null && r < halves.size) {
+                val gapW = avail * splitGap
+                val halfW = (avail - gapW) / 2f
+                placeRow(halves[r].first, x0, halfW, y, r)
+                placeRow(halves[r].second, x0 + halfW + gapW, halfW, y, r)
+            } else placeRow(rows[r], x0, avail, y, r)
+        }
+    }
+
+    private fun placeRow(row: List<KeyDef>, left: Float, width: Float, y: Float, r: Int) {
+        val sum = row.sumOf { it.weight.toDouble() }.toFloat()
+        val unit = (width - gapX * (row.size - 1)) / sum
+        var x = left
+        for (k in row) {
+            val kw = unit * k.weight
+            if (k.type != KeyType.SPACER) frames.add(KeyFrame(k, r, RectF(x, y, x + kw, y + keyH)))
+            x += kw + gapX
         }
     }
 
@@ -263,7 +288,7 @@ class KeyboardView(context: Context) : View(context) {
                 val hasHint = hint != null && layer == Layer.LETTERS
                 textPaint.typeface = regular
                 textPaint.color = t.text
-                textPaint.textSize = keyH * 0.43f
+                textPaint.textSize = keyH * (if (layer == Layer.NUMPAD) 0.52f else 0.43f)
                 val label = cased(def)
                 val ly = cy + if (hasHint) keyH * 0.08f else 0f
                 val glyphCentered = label.length == 1 && !label[0].isLetterOrDigit()

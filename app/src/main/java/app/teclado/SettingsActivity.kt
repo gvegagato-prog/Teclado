@@ -134,6 +134,14 @@ class SettingsActivity : Activity() {
             switchRow(R.string.opt_doublespace, null, prefs.doubleSpacePeriod) { prefs.doubleSpacePeriod = it }
         }
 
+        section(R.string.sec_split)
+        content.addView(text(getString(R.string.split_hint), 13f, cSub).apply { setPadding(dp(4), 0, dp(4), dp(8)) })
+        card {
+            splitRows(this)
+            addView(divider())
+            addView(splitGapRow())
+        }
+
         section(R.string.opt_theme)
         card { themeRows(this) }
 
@@ -285,6 +293,49 @@ class SettingsActivity : Activity() {
             box.addView(row)
         }
         paint()
+    }
+
+    private fun splitRows(box: LinearLayout) {
+        val opts = listOf("off" to R.string.split_off, "landscape" to R.string.split_landscape, "always" to R.string.split_always)
+        val marks = HashMap<String, TextView>()
+        fun paint() = marks.forEach { (k, v) -> v.text = if (prefs.splitMode == k) "✓" else "" }
+        opts.forEachIndexed { i, (key, label) ->
+            if (i > 0) box.addView(divider())
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(16), dp(13), dp(16), dp(13))
+                setOnClickListener { prefs.splitMode = key; paint() }
+            }
+            row.addView(text(getString(label), 17f, cText), LinearLayout.LayoutParams(0, -2, 1f))
+            val mark = text("", 18f, cAccent, bold = true)
+            marks[key] = mark
+            row.addView(mark)
+            box.addView(row)
+        }
+        paint()
+    }
+
+    private fun splitGapRow(): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        val l = text(getString(R.string.split_gap, prefs.splitGap), 17f, cText)
+        row.addView(l)
+        row.addView(SeekBar(this).apply {
+            max = 30
+            progress = prefs.splitGap - 15
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(s: SeekBar, p: Int, fromUser: Boolean) {
+                    prefs.splitGap = 15 + p
+                    l.text = getString(R.string.split_gap, 15 + p)
+                }
+                override fun onStartTrackingTouch(s: SeekBar) {}
+                override fun onStopTrackingTouch(s: SeekBar) {}
+            })
+        })
+        return row
     }
 
     private fun marginRow(): View {

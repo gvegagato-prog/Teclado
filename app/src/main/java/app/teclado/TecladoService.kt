@@ -30,6 +30,7 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     internal val engineReady get() = engine != null
     internal val language get() = currentLang()
     internal val shiftState get() = shift
+    internal val layerState get() = layer
     @Volatile private var detector: LanguageDetector? = null
     private var lexicons: Map<Lang, Lexicon> = emptyMap()
 
@@ -102,6 +103,15 @@ open class TecladoService : InputMethodService(), KeyboardListener {
         val v = kb ?: return
         v.theme = KbTheme.byName(prefs.theme, systemDark())
         v.bottomMarginDp = prefs.bottomMargin
+        val cfg = resources.configuration
+        val wide = cfg.screenWidthDp >= 600
+        val landscape = cfg.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val split = when (prefs.splitMode) {
+            "always" -> true
+            "landscape" -> wide && landscape
+            else -> false
+        }
+        v.splitGap = if (split) prefs.splitGap / 100f else 0f
         v.heightPercent = prefs.heightPercent
         v.swipeDownEnabled = prefs.swipeDownSymbols
         v.hapticsEnabled = prefs.haptics
@@ -132,7 +142,21 @@ open class TecladoService : InputMethodService(), KeyboardListener {
         imeAction = info.imeOptions and EditorInfo.IME_MASK_ACTION
         noEnterAction = (info.imeOptions and EditorInfo.IME_FLAG_NO_ENTER_ACTION) != 0
 
-        layer = if (keepSymbols) Layer.SYM1 else Layer.LETTERS
+        layer = when {
+            cls == InputType.TYPE_CLASS_NUMBER -> {
+                kb?.setNumpad(Layouts.numpad(PadKind.NUMBER,
+                    signed = (inputType and InputType.TYPE_NUMBER_FLAG_SIGNED) != 0,
+                    decimal = (inputType and InputType.TYPE_NUMBER_FLAG_DECIMAL) != 0))
+                Layer.NUMPAD
+            }
+            cls == InputType.TYPE_CLASS_PHONE -> {
+                kb?.setNumpad(Layouts.numpad(PadKind.PHONE, signed = false, decimal = false)); Layer.NUMPAD
+            }
+            cls == InputType.TYPE_CLASS_DATETIME -> {
+                kb?.setNumpad(Layouts.numpad(PadKind.DATETIME, signed = false, decimal = false)); Layer.NUMPAD
+            }
+            else -> Layer.LETTERS
+        }
         kb?.layer = layer
         kb?.enterLabel = enterLabelFor()
         lastAC = null

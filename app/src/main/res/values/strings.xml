@@ -43,6 +43,12 @@
     <string name="opt_margin">Bottom margin: %1$d dp</string>
     <string name="opt_margin_auto">Bottom margin: automatic</string>
     <string name="opt_margin_sub">Raise it if the system buttons overlap the bottom row</string>
+    <string name="sec_split">Split keyboard</string>
+    <string name="split_hint">Moves the keys to the sides so each thumb has its half, for typing on a tablet with both hands.</string>
+    <string name="split_off">Off</string>
+    <string name="split_landscape">Landscape on large screens</string>
+    <string name="split_always">Always</string>
+    <string name="split_gap">Gap in the middle: %1$d%%</string>
     <string name="opt_height">Key height: %1$d%%</string>
 
     <string name="sec_shortcuts">Text shortcuts</string>

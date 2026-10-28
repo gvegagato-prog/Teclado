@@ -41,6 +41,16 @@ class Prefs(context: Context) {
         get() = sp.getString("theme", "system") ?: "system"
         set(v) = sp.edit().putString("theme", v).apply()
 
+    /** "off", "landscape" (solo pantallas grandes en horizontal) o "always". */
+    var splitMode: String
+        get() = sp.getString("splitMode", "landscape") ?: "landscape"
+        set(v) = sp.edit().putString("splitMode", v).apply()
+
+    /** Hueco central del teclado dividido, en % del ancho: 15..45. */
+    var splitGap: Int
+        get() = sp.getInt("splitGap", 28)
+        set(v) = sp.edit().putInt("splitGap", v.coerceIn(15, 45)).apply()
+
     /** Margen inferior en dp; 0 = automático. */
     var bottomMargin: Int
         get() = sp.getInt("bottomMargin", 0)

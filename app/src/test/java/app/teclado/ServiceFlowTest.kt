@@ -202,6 +202,20 @@ class ServiceFlowTest {
         assertEquals("Necesito el teléfono mañana ", ed.text.toString())
     }
 
+    @Test fun numericFieldsUseTheNumpad() {
+        for (t in listOf(InputType.TYPE_CLASS_NUMBER, InputType.TYPE_CLASS_PHONE, InputType.TYPE_CLASS_DATETIME,
+            InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD)) {
+            start(t)
+            assertEquals(Layer.NUMPAD, svc.layerState)
+            type("1203")
+            assertEquals("1203", ed.text.toString())
+            backspace()
+            assertEquals("120", ed.text.toString())
+        }
+        start() // vuelve a un campo de texto
+        assertEquals(Layer.LETTERS, svc.layerState)
+    }
+
     @Test fun typedLowercaseKeepsCase() {
         start(InputType.TYPE_CLASS_TEXT)
         type("teh ")

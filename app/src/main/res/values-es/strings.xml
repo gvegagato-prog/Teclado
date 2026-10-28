@@ -43,6 +43,12 @@
     <string name="opt_margin">Margen inferior: %1$d dp</string>
     <string name="opt_margin_auto">Margen inferior: automático</string>
     <string name="opt_margin_sub">Súbelo si los botones del sistema tapan la fila de abajo</string>
+    <string name="sec_split">Teclado dividido</string>
+    <string name="split_hint">Separa las teclas hacia los lados para que cada pulgar tenga su mitad, pensado para escribir en la tablet con las dos manos.</string>
+    <string name="split_off">Desactivado</string>
+    <string name="split_landscape">En horizontal en pantallas grandes</string>
+    <string name="split_always">Siempre</string>
+    <string name="split_gap">Hueco central: %1$d%%</string>
     <string name="opt_height">Altura de las teclas: %1$d%%</string>
 
     <string name="sec_shortcuts">Atajos de texto</string>

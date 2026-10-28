@@ -17,11 +17,11 @@ import java.io.FileOutputStream
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [35], qualifiers = "w800dp-h1200dp-xhdpi")
+@Config(sdk = [35], qualifiers = "w560dp-h840dp-port-xxhdpi")
 class RenderPreviewTest {
     private val out = File(System.getProperty("preview.dir") ?: "build/previews").also { it.mkdirs() }
 
-    private fun make(theme: KbTheme, widthPx: Int = 1600): KeyboardView {
+    private fun make(theme: KbTheme, widthPx: Int = 1680): KeyboardView {
         val ctx = RuntimeEnvironment.getApplication()
         val v = KeyboardView(ctx)
         v.theme = theme
@@ -87,19 +87,19 @@ class RenderPreviewTest {
         save(pop, "light_longpress_a")
         touch(pop, MotionEvent.ACTION_UP, ax, ay)
 
-        val split = make(KbTheme.LIGHT, 2000)
-        split.splitGap = 0.28f
+        val split = make(KbTheme.LIGHT, 1680)
+        split.splitGap = 0.22f
         split.setSuggestions(listOf(SuggestionItem("\"helo\""), SuggestionItem("hello", true), SuggestionItem("help")))
         save(split, "split_letters")
-        val splitSym = make(KbTheme.DARK, 2000)
-        splitSym.splitGap = 0.28f
+        val splitSym = make(KbTheme.DARK, 1680)
+        splitSym.splitGap = 0.22f
         splitSym.layer = Layer.SYM1
         save(splitSym, "split_symbols_dark")
 
         for ((name, kind, signed, dec) in listOf(
             Quad("numpad_number", PadKind.NUMBER, true, true), Quad("numpad_phone", PadKind.PHONE, false, false),
             Quad("numpad_int", PadKind.NUMBER, false, false))) {
-            val v = make(KbTheme.LIGHT, 1600)
+            val v = make(KbTheme.LIGHT, 1680)
             v.setNumpad(Layouts.numpad(kind, signed, dec))
             v.layer = Layer.NUMPAD
             v.enterLabel = "Listo"

@@ -108,7 +108,7 @@ class KeyboardView(context: Context) : View(context) {
         val dm = resources.displayMetrics
         val wDp = widthPx / dm.density
         val hDp = dm.heightPixels / dm.density
-        val base = (wDp * 0.072f).coerceIn(44f, 60f)
+        val base = (wDp * 0.085f).coerceIn(44f, 60f)
         val byScreen = hDp * 0.085f
         return dp(min(base, byScreen) * heightPercent / 100f)
     }

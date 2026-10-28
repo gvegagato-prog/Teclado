@@ -31,6 +31,7 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     internal val language get() = currentLang()
     internal val shiftState get() = shift
     internal val layerState get() = layer
+    internal val splitGapState get() = kb?.splitGap ?: -1f
     @Volatile private var detector: LanguageDetector? = null
     private var lexicons: Map<Lang, Lexicon> = emptyMap()
 
@@ -104,11 +105,11 @@ open class TecladoService : InputMethodService(), KeyboardListener {
         v.theme = KbTheme.byName(prefs.theme, systemDark())
         v.bottomMarginDp = prefs.bottomMargin
         val cfg = resources.configuration
-        val wide = cfg.screenWidthDp >= 600
-        val landscape = cfg.orientation == Configuration.ORIENTATION_LANDSCAPE
+        // Tablet = el lado corto de la pantalla mide >= 500 dp (un móvil, ni girado, llega a eso)
+        val tablet = cfg.smallestScreenWidthDp >= 500
         val split = when (prefs.splitMode) {
             "always" -> true
-            "landscape" -> wide && landscape
+            "tablet" -> tablet
             else -> false
         }
         v.splitGap = if (split) prefs.splitGap / 100f else 0f

@@ -46,7 +46,7 @@
     <string name="sec_split">Teclado dividido</string>
     <string name="split_hint">Separa las teclas hacia los lados para que cada pulgar tenga su mitad, pensado para escribir en la tablet con las dos manos.</string>
     <string name="split_off">Desactivado</string>
-    <string name="split_landscape">En horizontal en pantallas grandes</string>
+    <string name="split_tablet">En tablets (vertical y horizontal)</string>
     <string name="split_always">Siempre</string>
     <string name="split_gap">Hueco central: %1$d%%</string>
     <string name="opt_height">Altura de las teclas: %1$d%%</string>

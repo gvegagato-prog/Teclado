@@ -46,7 +46,7 @@
     <string name="sec_split">Split keyboard</string>
     <string name="split_hint">Moves the keys to the sides so each thumb has its half, for typing on a tablet with both hands.</string>
     <string name="split_off">Off</string>
-    <string name="split_landscape">Landscape on large screens</string>
+    <string name="split_tablet">On tablets (portrait and landscape)</string>
     <string name="split_always">Always</string>
     <string name="split_gap">Gap in the middle: %1$d%%</string>
     <string name="opt_height">Key height: %1$d%%</string>

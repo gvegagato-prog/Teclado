@@ -296,7 +296,7 @@ class SettingsActivity : Activity() {
     }
 
     private fun splitRows(box: LinearLayout) {
-        val opts = listOf("off" to R.string.split_off, "landscape" to R.string.split_landscape, "always" to R.string.split_always)
+        val opts = listOf("off" to R.string.split_off, "tablet" to R.string.split_tablet, "always" to R.string.split_always)
         val marks = HashMap<String, TextView>()
         fun paint() = marks.forEach { (k, v) -> v.text = if (prefs.splitMode == k) "✓" else "" }
         opts.forEachIndexed { i, (key, label) ->

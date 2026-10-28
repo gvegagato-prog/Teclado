@@ -35,6 +35,7 @@ Sin ese fichero, la release se genera sin firmar (es lo que hace GitHub Actions 
 - Arrastrar sobre la barra espaciadora mueve el cursor. Doble espacio escribe un punto.
 - Campos de número, teléfono y fecha: teclado numérico propio (con signo y decimales cuando el campo los admite).
 - Teclado dividido (ajustes): en tablets (vertical y horizontal) las teclas se separan hacia los lados para escribir con ambas manos; hueco regulable.
+- Barra superior con dos botones: **pegar** (lo último copiado) y **portapapeles** (historial de las últimas 50 copias de texto, sin caducidad; tocar pega, la ✕ borra una, «Borrar todo» pide confirmación). No se guardan los textos que los gestores de contraseñas marcan como sensibles.
 - Siempre bilingüe: no hay tecla de idioma; la barra espaciadora muestra el idioma detectado.
 - 7 temas (sistema, claro, arena, rosa, oscuro, medianoche, negro), altura y margen inferior ajustables, vibración opcional.
 

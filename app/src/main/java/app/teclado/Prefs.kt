@@ -41,6 +41,15 @@ class Prefs(context: Context) {
         get() = sp.getString("theme", "system") ?: "system"
         set(v) = sp.edit().putString("theme", v).apply()
 
+    var clipboardHistory: Boolean
+        get() = sp.getBoolean("clipboardHistory", true)
+        set(v) = sp.edit().putBoolean("clipboardHistory", v).apply()
+
+    /** Sube cada vez que los ajustes borran el historial; el teclado lo vacía al verlo cambiar. */
+    var clipEpoch: Int
+        get() = sp.getInt("clipEpoch", 0)
+        set(v) = sp.edit().putInt("clipEpoch", v).apply()
+
     /** "off", "tablet" (pantallas grandes, vertical y horizontal) o "always". */
     var splitMode: String
         get() = (sp.getString("splitMode", "tablet") ?: "tablet").let { if (it == "landscape") "tablet" else it }

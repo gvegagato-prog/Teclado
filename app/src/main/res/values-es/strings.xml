@@ -49,6 +49,19 @@
     <string name="split_tablet">En tablets (vertical y horizontal)</string>
     <string name="split_always">Siempre</string>
     <string name="split_gap">Hueco central: %1$d%%</string>
+    <string name="clip_title">Portapapeles · %1$d</string>
+    <string name="clip_clear">Borrar todo</string>
+    <string name="clip_clear_confirm">¿Seguro? Toca otra vez</string>
+    <string name="clip_empty">Aún no has copiado nada</string>
+    <string name="sec_clipboard">Portapapeles</string>
+    <string name="opt_clip_history">Guardar historial del portapapeles</string>
+    <string name="opt_clip_history_sub">Las últimas 50 copias de texto, sin límite de tiempo, guardadas solo en este dispositivo. Los textos que los gestores de contraseñas marcan como sensibles no se guardan.</string>
+    <plurals name="clip_count">
+        <item quantity="one">%1$d copia guardada</item>
+        <item quantity="other">%1$d copias guardadas</item>
+    </plurals>
+    <string name="clip_clear_all">Borrar historial del portapapeles</string>
+    <string name="clip_clear_all_confirm">¿Borrar todas las copias guardadas?</string>
     <string name="opt_height">Altura de las teclas: %1$d%%</string>
 
     <string name="sec_shortcuts">Atajos de texto</string>

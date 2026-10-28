@@ -49,6 +49,19 @@
     <string name="split_tablet">On tablets (portrait and landscape)</string>
     <string name="split_always">Always</string>
     <string name="split_gap">Gap in the middle: %1$d%%</string>
+    <string name="clip_title">Clipboard · %1$d</string>
+    <string name="clip_clear">Clear all</string>
+    <string name="clip_clear_confirm">Sure? Tap again</string>
+    <string name="clip_empty">Nothing copied yet</string>
+    <string name="sec_clipboard">Clipboard</string>
+    <string name="opt_clip_history">Keep clipboard history</string>
+    <string name="opt_clip_history_sub">The last 50 text copies, with no time limit, stored only on this device. Texts that password managers mark as sensitive are not saved.</string>
+    <plurals name="clip_count">
+        <item quantity="one">%1$d saved copy</item>
+        <item quantity="other">%1$d saved copies</item>
+    </plurals>
+    <string name="clip_clear_all">Clear clipboard history</string>
+    <string name="clip_clear_all_confirm">Delete all saved copies?</string>
     <string name="opt_height">Key height: %1$d%%</string>
 
     <string name="sec_shortcuts">Text shortcuts</string>

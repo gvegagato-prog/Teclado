@@ -43,6 +43,7 @@ class SettingsActivity : Activity() {
     private var selectBtn: Button? = null
     private var shortcutsBox: LinearLayout? = null
     private var learnedLabel: TextView? = null
+    private var clipLabel: TextView? = null
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
@@ -80,6 +81,14 @@ class SettingsActivity : Activity() {
         refreshSetup()
         refreshShortcuts()
         refreshLearned()
+        refreshClip()
+    }
+
+    private fun refreshClip() {
+        val st = ClipStore(ClipStore.fileFor(filesDir))
+        st.load()
+        val n = st.items.size
+        clipLabel?.text = resources.getQuantityString(R.plurals.clip_count, n, n)
     }
 
     private fun build() {
@@ -166,6 +175,27 @@ class SettingsActivity : Activity() {
             addView(box)
             addView(divider())
             addView(rowButton(getString(R.string.shortcut_add)) { editShortcut(null) })
+        }
+
+        section(R.string.sec_clipboard)
+        card {
+            switchRow(R.string.opt_clip_history, R.string.opt_clip_history_sub, prefs.clipboardHistory) { prefs.clipboardHistory = it }
+            addView(divider())
+            val l = text("", 17f, cText).apply { setPadding(dp(16), dp(14), dp(16), dp(14)) }
+            clipLabel = l
+            addView(l)
+            addView(divider())
+            addView(rowButton(getString(R.string.clip_clear_all), destructive = true) {
+                AlertDialog.Builder(this@SettingsActivity)
+                    .setMessage(R.string.clip_clear_all_confirm)
+                    .setPositiveButton(R.string.delete) { _, _ ->
+                        ClipStore(ClipStore.fileFor(filesDir)).clear()
+                        prefs.clipEpoch = prefs.clipEpoch + 1
+                        refreshClip()
+                    }
+                    .setNegativeButton(R.string.cancel, null)
+                    .show()
+            })
         }
 
         section(R.string.sec_learned)

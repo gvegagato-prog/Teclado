@@ -87,6 +87,19 @@ class RenderPreviewTest {
         save(pop, "light_longpress_a")
         touch(pop, MotionEvent.ACTION_UP, ax, ay)
 
+        for (dark in listOf(false, true)) {
+            val v = make(if (dark) KbTheme.DARK else KbTheme.LIGHT)
+            v.clipItems = listOf(
+                "gonvegato@gmail.com",
+                "Hola, te escribo para confirmar la reunión del jueves a las 10:30 en la oficina de Madrid. Si no te viene bien, dime y buscamos otro hueco.",
+                "https://github.com/gvegagato-prog/Teclado",
+                "ES76 2077 0024 0031 0257 5766",
+                "Segunda línea\ntercera línea",
+            ) + (1..20).map { "copia número $it" }
+            v.toggleClipboard()
+            save(v, if (dark) "clipboard_dark" else "clipboard_light")
+        }
+
         val split = make(KbTheme.LIGHT, 1680)
         split.splitGap = 0.22f
         split.setSuggestions(listOf(SuggestionItem("\"helo\""), SuggestionItem("hello", true), SuggestionItem("help")))

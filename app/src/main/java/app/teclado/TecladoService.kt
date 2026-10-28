@@ -1,5 +1,7 @@
 package app.teclado
 
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.res.Configuration
 import android.inputmethodservice.InputMethodService
 import android.os.Handler
@@ -31,6 +33,7 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     internal val language get() = currentLang()
     internal val shiftState get() = shift
     internal val layerState get() = layer
+    internal val clipHistory get() = clipStore.items
     internal val splitGapState get() = kb?.splitGap ?: -1f
     @Volatile private var detector: LanguageDetector? = null
     private var lexicons: Map<Lang, Lexicon> = emptyMap()
@@ -59,9 +62,75 @@ open class TecladoService : InputMethodService(), KeyboardListener {
 
     private var lastLangShown: Lang? = null
 
+    private lateinit var clipStore: ClipStore
+    private var clipEpochSeen = 0
+    private val clipListener = ClipboardManager.OnPrimaryClipChangedListener { captureClip() }
+
+    private fun clipboard() = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+
+    /** Guarda el texto copiado. Solo el teclado activo puede leer el portapapeles en segundo plano (Android 10+). */
+    private fun captureClip() {
+        if (!prefs.clipboardHistory) return
+        try {
+            val clip = clipboard().primaryClip ?: return
+            if (clip.itemCount == 0 || !clip.description.hasMimeType("text/*")) return
+            // Los gestores de contraseñas marcan lo que copian como sensible: no se guarda.
+            if (clip.description.extras?.getBoolean(SENSITIVE_EXTRA, false) == true) return
+            val item = clip.getItemAt(0)
+            if (item.text == null && item.uri != null) return
+            val text = item.coerceToText(this)?.toString() ?: return
+            if (clipStore.add(text)) kb?.clipItems = clipStore.items
+        } catch (_: Exception) {
+            // sin acceso al portapapeles (p. ej. la app no es el teclado activo): se ignora
+        }
+    }
+
+    private fun pasteText(text: String) {
+        val ic = currentInputConnection ?: return
+        ic.commitText(text, 1)
+        cursor += text.length
+        lastAC = null
+        pendingAutoSpace = false
+        doubleSpaceArmed = false
+        resync()
+        updateShiftFromContext()
+        refreshSuggestions()
+    }
+
+    override fun onPasteLatest() {
+        val clip = try { clipboard().primaryClip } catch (_: Exception) { null }
+        val sys = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
+        val text = sys?.takeIf { it.isNotEmpty() } ?: clipStore.items.firstOrNull() ?: return
+        pasteText(text)
+    }
+
+    override fun onClipboardOpened() {
+        kb?.clipItems = clipStore.items
+    }
+
+    override fun onClipboardPick(index: Int) {
+        val t = clipStore.items.getOrNull(index) ?: return
+        kb?.closeClipboard()
+        pasteText(t)
+    }
+
+    override fun onClipboardDelete(index: Int) {
+        clipStore.remove(index)
+        kb?.clipItems = clipStore.items
+    }
+
+    override fun onClipboardClear() {
+        clipStore.clear()
+        kb?.clipItems = clipStore.items
+    }
+
     override fun onCreate() {
         super.onCreate()
         prefs = Prefs(this)
+        clipStore = ClipStore(ClipStore.fileFor(filesDir))
+        clipStore.load()
+        clipEpochSeen = prefs.clipEpoch
+        try { clipboard().addPrimaryClipChangedListener(clipListener) } catch (_: Exception) {}
         Thread({
             try {
                 val loaded = HashMap<Lang, Lexicon>()
@@ -127,6 +196,12 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     override fun onStartInputView(info: EditorInfo, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         applyPrefs()
+        if (prefs.clipEpoch != clipEpochSeen) {
+            clipEpochSeen = prefs.clipEpoch
+            clipStore.clear()
+        }
+        kb?.closeClipboard()
+        kb?.clipItems = clipStore.items
         inputType = info.inputType
         val cls = inputType and InputType.TYPE_MASK_CLASS
         val variation = inputType and InputType.TYPE_MASK_VARIATION
@@ -182,6 +257,7 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     }
 
     override fun onDestroy() {
+        try { clipboard().removePrimaryClipChangedListener(clipListener) } catch (_: Exception) {}
         worker.looper.quitSafely()
         super.onDestroy()
     }
@@ -655,6 +731,7 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     }
 
     companion object {
+        private const val SENSITIVE_EXTRA = "android.content.extra.IS_SENSITIVE"
         private const val WORD_DELETE_AFTER = 14
         private const val BOUNDARY = "([{\"“«¿¡-"
     }

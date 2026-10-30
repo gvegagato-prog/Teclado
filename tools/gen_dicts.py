@@ -4,13 +4,18 @@
 Uso:
     pip install wordfreq==3.1.1 msgpack spylls
     # diccionarios Hunspell de LibreOffice (solo se usan aquí, para validar; no van en la app):
-    #   https://github.com/LibreOffice/dictionaries  ->  en/en_US.{dic,aff}  es/es_ES.{dic,aff}
+    #   https://github.com/LibreOffice/dictionaries  ->  en/en_US, en/en_GB, es/es_ES  ({dic,aff})
     python3 tools/gen_dicts.py /ruta/a/hunspell
 
 Formato de salida (ordenado por punto de código, igual que String.compareTo en Kotlin):
     #cand <b>      palabras con banda <= b se pueden proponer como corrección (~120k más frecuentes)
     #d2 <b>        palabras con banda <= b entran en el índice de errores dobles (~30k más frecuentes)
     palabra<TAB>banda          (banda = frecuencia de wordfreq en centibelios, 0 = la más frecuente)
+    palabra<TAB>banda<TAB>x    "x" = la palabra existe (no se corrige) pero NO se propone nunca como corrección
+
+Una palabra solo se propone como corrección si Hunspell la reconoce, o si es muy frecuente (banda <= 500) y no
+es una palabra pegada (dos palabras válidas sin espacio: "almenos", "alfinal"). Así las corrige a algo real y
+no a basura de la web ni a nombres propios raros.
 
 TODAS las palabras cuentan como "existentes": el teclado no corrige nunca una palabra real aunque sea rara.
 
@@ -33,6 +38,7 @@ OUT = os.path.join(HERE, "..", "app", "src", "main", "assets", "dict")
 DATA = os.path.join(os.path.dirname(importlib.util.find_spec("wordfreq").origin), "data")
 HUN = sys.argv[1] if len(sys.argv) > 1 else "hunspell"
 CAND_RANK, D2_RANK, RARE_RANK, COMMON_RANK = 120_000, 30_000, 15_000, 20_000
+UNCOND_BAND = 500
 
 def fold(s):
     return "".join(c for c in unicodedata.normalize("NFD", s) if not unicodedata.combining(c))
@@ -84,10 +90,11 @@ def dl1(a, b):
 
 def main():
     hun = {l: Dictionary.from_files(os.path.join(HUN, n)) for l, n in (("en", "en_US"), ("es", "es_ES"))}
+    hun_gb = Dictionary.from_files(os.path.join(HUN, "en_GB"))  # grafías británicas: colour, mould, centre...
     cache = {}
     def valid(w):
         if w not in cache:
-            cache[w] = any(h.lookup(w) for h in hun.values())
+            cache[w] = any(h.lookup(w) for h in hun.values()) or bool(hun_gb.lookup(w))
         return cache[w]
 
     typos = {}
@@ -173,14 +180,34 @@ def main():
                     rare_here = ranks[lang].get(w, 0) > RARE_RANK
                     if w in words and w not in remove and (forced or (rare_here and not valid(w))): remove[w] = "otro:" + why
         kept = [w for w in words if w not in remove]
+        hun_own = hun[lang]
+        own_cache = {}
+        def valid_own(w):
+            if w not in own_cache:
+                own_cache[w] = bool(hun_own.lookup(w)) or (lang == "en" and bool(hun_gb.lookup(w)))
+            return own_cache[w]
+        def glued(w):
+            for i in range(2, len(w) - 1):
+                if valid_own(w[:i]) and valid_own(w[i:]) and len(w[i:]) >= 2:
+                    return True
+            return False
+        noncand = set()
+        cand_limit = CAND_RANK
+        for w in kept[:cand_limit]:
+            if valid_own(w):
+                continue
+            if words[w] <= UNCOND_BAND and not glued(w):
+                continue
+            noncand.add(w)
         cand_band = words[kept[min(CAND_RANK, len(kept)) - 1]]
         d2_band = words[kept[min(D2_RANK, len(kept)) - 1]]
         with open(os.path.join(OUT, f"{lang}.tsv"), "w", encoding="utf-8") as fh:
             fh.write(f"#cand {cand_band}\n#d2 {d2_band}\n")
             for w in sorted(kept):
-                fh.write(f"{w}\t{words[w]}\n")
+                fh.write(f"{w}\t{words[w]}" + ("\tx\n" if w in noncand else "\n"))
         import random; random.seed(5)
-        print(lang, "palabras", len(kept), "eliminadas", len(remove), "cand<=", cand_band, "d2<=", d2_band)
+        print(lang, "palabras", len(kept), "eliminadas", len(remove), "cand<=", cand_band, "d2<=", d2_band, "no-candidatas", len(noncand))
+        print("  no candidatas (muestra):", random.sample(sorted(noncand), 40) if False else sorted(noncand, key=lambda w: words[w])[:60])
         print("  muestra:", random.sample(sorted(remove.items()), 50))
 
 main()

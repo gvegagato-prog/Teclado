@@ -379,7 +379,8 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     }
 
     private fun observeWord(word: String) {
-        detector?.observe(word)
+        // una corrección que parte una palabra pegada ("hola que") aporta cada parte por separado
+        for (part in word.split(' ')) if (part.isNotEmpty()) detector?.observe(part)
         if (detector?.current != lastLangShown) updateSpaceLabel()
     }
 

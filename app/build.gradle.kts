@@ -18,8 +18,8 @@ android {
         applicationId = "app.teclado"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.4"
+        versionCode = 7
+        versionName = "1.5"
     }
 
     signingConfigs {
@@ -50,6 +50,7 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
         unitTests.all { t ->
+            t.maxHeapSize = "3g" // cada prueba de servicio carga los diccionarios completos
             // Opcional: usar jars de Robolectric ya descargados (entornos sin acceso directo a Maven Central).
             providers.gradleProperty("robolectricDir").orNull?.let {
                 t.systemProperty("robolectric.offline", "true")

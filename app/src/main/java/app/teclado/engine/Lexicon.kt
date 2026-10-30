@@ -22,6 +22,7 @@ class Lexicon private constructor(
     private val chars: CharArray,
     private val offs: IntArray,
     private val bands: ShortArray,
+    private val noCand: BooleanArray,
     val candBand: Int,
     private val d2Band: Int,
 ) {
@@ -29,7 +30,7 @@ class Lexicon private constructor(
 
     fun word(i: Int): String = String(chars, offs[i], offs[i + 1] - offs[i])
     fun band(i: Int): Int = bands[i].toInt()
-    fun isCandidate(i: Int): Boolean = bands[i] <= candBand
+    fun isCandidate(i: Int): Boolean = bands[i] <= candBand && !noCand[i]
 
     /** log natural de la frecuencia relativa, escalada para que sea >= 0. */
     fun logFreq(i: Int): Double = (MAX_BAND - bands[i]) / 100.0 * LN10
@@ -53,15 +54,40 @@ class Lexicon private constructor(
         return len - w.length
     }
 
-    fun indexOf(w: CharSequence): Int {
-        var lo = 0
-        var hi = size - 1
-        while (lo <= hi) {
-            val mid = (lo + hi) ushr 1
-            val c = cmp(mid, w)
-            if (c < 0) lo = mid + 1 else if (c > 0) hi = mid - 1 else return mid
+    // Tabla hash abierta (sondeo lineal): búsqueda de palabra exacta en O(longitud), mucho más rápida que
+    // la búsqueda binaria; el corrector hace decenas de miles de consultas por palabra.
+    private val table: IntArray by lazy {
+        val t = IntArray(TABLE_SIZE)
+        for (i in 0 until size) {
+            var h = 0
+            for (k in offs[i] until offs[i + 1]) h = 31 * h + chars[k].code
+            var slot = slotOf(h)
+            while (t[slot] != 0) slot = (slot + 1) and (TABLE_SIZE - 1)
+            t[slot] = i + 1
         }
-        return -1
+        t
+    }
+
+    private fun slotOf(h: Int): Int = (h * -1640531527) ushr (32 - TABLE_BITS)
+
+    private fun equalsAt(i: Int, w: CharSequence): Boolean {
+        val s = offs[i]
+        if (offs[i + 1] - s != w.length) return false
+        for (k in w.indices) if (chars[s + k] != w[k]) return false
+        return true
+    }
+
+    fun indexOf(w: CharSequence): Int {
+        var h = 0
+        for (k in w.indices) h = 31 * h + w[k].code
+        val t = table
+        var slot = slotOf(h)
+        while (true) {
+            val e = t[slot]
+            if (e == 0) return -1
+            if (equalsAt(e - 1, w)) return e - 1
+            slot = (slot + 1) and (TABLE_SIZE - 1)
+        }
     }
 
     private fun lowerBound(prefix: String): Int {
@@ -127,7 +153,7 @@ class Lexicon private constructor(
     private val phonetic: HashMap<String, Int> by lazy {
         val m = HashMap<String, Int>()
         if (lang == Lang.ES) for (i in 0 until size) {
-            if (bands[i] > d2Band) continue
+            if (bands[i] > d2Band || !isCandidate(i)) continue
             val k = phoneticEs(word(i))
             val cur = m[k]
             if (cur == null || bands[i] < bands[cur]) m[k] = i
@@ -188,6 +214,8 @@ class Lexicon private constructor(
 
     companion object {
         const val MAX_BAND = 900
+        private const val TABLE_BITS = 20
+        private const val TABLE_SIZE = 1 shl TABLE_BITS
         private val LN10 = ln(10.0)
         private const val PREFIX = 7
 
@@ -204,6 +232,7 @@ class Lexicon private constructor(
             var nChars = 0
             var offs = IntArray(400_000)
             var bands = ShortArray(400_000)
+            var noCand = BooleanArray(400_000)
             var n = 0
             var pos = 0
             val len = text.length
@@ -223,6 +252,7 @@ class Lexicon private constructor(
                         if (n + 2 >= offs.size) {
                             offs = offs.copyOf(offs.size * 2)
                             bands = bands.copyOf(bands.size * 2)
+                            noCand = noCand.copyOf(noCand.size * 2)
                         }
                         offs[n] = nChars
                         for (k in pos until tab) chars[nChars++] = text[k]
@@ -230,6 +260,7 @@ class Lexicon private constructor(
                         for (k in tab + 1 until end) {
                             val c = text[k]
                             if (c in '0'..'9') b = b * 10 + (c - '0')
+                            else if (c == '\t') { noCand[n] = true; break }
                         }
                         bands[n] = b.coerceAtMost(MAX_BAND).toShort()
                         n++
@@ -238,7 +269,7 @@ class Lexicon private constructor(
                 pos = end + 1
             }
             offs[n] = nChars
-            return Lexicon(lang, chars.copyOf(nChars), offs.copyOf(n + 1), bands.copyOf(n), cand, d2)
+            return Lexicon(lang, chars.copyOf(nChars), offs.copyOf(n + 1), bands.copyOf(n), noCand.copyOf(n), cand, d2)
         }
 
         private val MARKS = Regex("\\p{M}+")

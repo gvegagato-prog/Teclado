@@ -3,7 +3,14 @@ package app.teclado.engine
 import kotlin.math.abs
 
 /** Una corrección posible. [cost] mide lo "improbable" del error; [score] combina frecuencia y coste. */
-class Candidate(val word: String, val score: Double, val cost: Double, val edits: Int, val crossLang: Boolean)
+class Candidate(
+    val word: String, val logFreq: Double, val cost: Double, val edits: Int, val crossLang: Boolean,
+    val band: Int = 0, val split: Boolean = false,
+) {
+    /** Puntuación: la frecuencia suma y cada error resta. [fw] = cuánto pesa la frecuencia. */
+    fun score(fw: Double = SpellEngine.FREQ_WEIGHT) = fw * logFreq - cost
+    val score: Double get() = score()
+}
 
 /**
  * Corrector bilingüe. Principio rector: **no tocar nunca una palabra real**. Una palabra se da por
@@ -48,32 +55,113 @@ class SpellEngine(private val lexicons: Map<Lang, Lexicon>) {
     fun suggest(word: String, lang: Lang, max: Int): List<Candidate> =
         candidates(word.lowercase(), lang).take(max)
 
-    /** Todas las correcciones plausibles, de mejor a peor. */
+    private val cache = object : LinkedHashMap<String, List<Candidate>>(64, 0.75f, true) {
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<String, List<Candidate>>) = size > 64
+    }
+
+    /** Todas las correcciones plausibles, de mejor a peor. Se guardan las últimas para que el espacio no recalcule. */
     fun candidates(w: String, lang: Lang): List<Candidate> {
+        val key = lang.code + "|" + w
+        synchronized(cache) { cache[key]?.let { return it } }
+        val r = computeCandidates(w, lang)
+        synchronized(cache) { cache[key] = r }
+        return r
+    }
+
+    private fun computeCandidates(w: String, lang: Lang): List<Candidate> {
         if (w.isEmpty() || w.length > 24) return emptyList()
         val best = HashMap<String, Candidate>()
-        for ((l, lex) in lexicons) {
-            val cross = l != lang
-            val ids = HashSet<Int>()
-            collectEdits1(w, lex, if (l == Lang.ES) ALPHABET_ES else ALPHABET_EN, ids)
-            lex.withAccents(Lexicon.fold(w)).let { if (it >= 0) ids.add(it) }
-            val phon = lex.soundsLike(w)
-            if (phon >= 0) ids.add(phon)
-            if (!cross && w.length >= 5) lex.d2Candidates(w, ids)
+        fun consider(lex: Lexicon, ids: Set<Int>, cross: Boolean, phon: Int) {
             for (i in ids) {
                 if (!lex.isCandidate(i)) continue
                 val c = lex.word(i)
                 if (c == w) continue
                 var d = distance(w, c)
-                if (i == phon && d.cost > PHONETIC) d = Dist(PHONETIC, 1) // error de ortografía "por sonido"
+                // error de ortografía "por sonido" (nesecito -> necesito); solo si de verdad es una palabra parecida
+                if (i == phon && d.cost > PHONETIC && w.length >= 5 && abs(w.length - c.length) <= 1 && unitDistance(w, c) <= 2) d = Dist(PHONETIC, 1)
                 if (d.edits == 0 || d.edits > 2) continue
                 val cost = d.cost + if (cross) CROSS_LANG_COST else 0.0
-                val score = FREQ_WEIGHT * lex.logFreq(i) - cost
+                val cand = Candidate(c, lex.logFreq(i), cost, d.edits, cross, lex.band(i))
                 val cur = best[c]
-                if (cur == null || score > cur.score) best[c] = Candidate(c, score, cost, d.edits, cross)
+                if (cur == null || cand.score > cur.score) best[c] = cand
             }
         }
+        for ((l, lex) in lexicons) {
+            val cross = l != lang
+            val alphabet = if (l == Lang.ES) ALPHABET_ES else ALPHABET_EN
+            val ids = HashSet<Int>()
+            collectEdits1(w, lex, alphabet, ids)
+            lex.withAccents(Lexicon.fold(w)).let { if (it >= 0) ids.add(it) }
+            val phon = lex.soundsLike(w)
+            if (phon >= 0) ids.add(phon)
+            consider(lex, ids, cross, phon)
+            // Dos fallos: si ya hay una corrección barata (tecla vecina, intercambio) no hace falta buscar más
+            val cheap = best.values.any { it.cost <= CHEAP_ENOUGH && it.crossLang == cross && it.band <= DOUBLE_MAX_BAND }
+            if (!cheap && w.length >= 4) {
+                val ids2 = HashSet<Int>()
+                collectKeyboardEdits2(w, lex, alphabet, ids2)
+                if (!cross && w.length >= 5) lex.d2Candidates(w, ids2)
+                consider(lex, ids2, cross, -1)
+            }
+        }
+        splitCandidates(w, lang)?.let { best[it.word] = it }
         return best.values.sortedByDescending { it.score }
+    }
+
+    /** "holaque" -> "hola que": dos palabras comunes pegadas por no pulsar el espacio. */
+    private fun splitCandidates(w: String, lang: Lang): Candidate? {
+        if (w.length < 5) return null
+        val lex = lexicons[lang] ?: return null
+        var bestC: Candidate? = null
+        for (i in 2..w.length - 2) {
+            val a = lex.indexOf(w.substring(0, i))
+            val b = lex.indexOf(w.substring(i))
+            if (a < 0 || b < 0 || !lex.isCandidate(a) || !lex.isCandidate(b)) continue
+            // partes de 1-2 letras solo si son palabras muy comunes (de, la, en, of, to...): evita "fl used"
+            if ((i < 3 && lex.band(a) > SHORT_PART_BAND) || (w.length - i < 3 && lex.band(b) > SHORT_PART_BAND)) continue
+            val band = maxOf(lex.band(a), lex.band(b))
+            if (band > SPLIT_MAX_BAND) continue
+            val cand = Candidate(w.substring(0, i) + " " + w.substring(i), minOf(lex.logFreq(a), lex.logFreq(b)), SPLIT_COST, 1, false, band, split = true)
+            if (bestC == null || cand.score > bestC.score) bestC = cand
+        }
+        return bestC
+    }
+
+    /**
+     * Segundo nivel de búsqueda, guiado por el teclado: de la errata se generan variantes con UN error típico
+     * (tecla vecina, intercambio, letra de más o de menos) y de cada una se busca otra palabra a otro error típico.
+     */
+    private fun collectKeyboardEdits2(w: String, lex: Lexicon, alphabet: String, out: MutableSet<Int>) {
+        val first = HashSet<String>()
+        typicalEdits(w, alphabet, withInsert = true) { first.add(it) }
+        for (v in first) {
+            if (v.isEmpty()) continue
+            // las operaciones se pueden combinar en cualquier orden: insertar letras solo en una de las dos fases
+            typicalEdits(v, alphabet, withInsert = false) { s ->
+                val i = lex.indexOf(s)
+                if (i >= 0) out.add(i)
+            }
+        }
+    }
+
+    /** Variantes de [w] a un error típico: vecina, intercambio, borrado, inserción de cualquier letra. */
+    private inline fun typicalEdits(w: String, alphabet: String, withInsert: Boolean, emit: (String) -> Unit) {
+        val n = w.length
+        val sb = StringBuilder(n + 1)
+        for (i in 0 until n) {
+            sb.setLength(0); sb.append(w, 0, i).append(w, i + 1, n)
+            if (sb.isNotEmpty()) emit(sb.toString())
+        }
+        for (i in 0 until n - 1) {
+            if (w[i] == w[i + 1]) continue
+            sb.setLength(0); sb.append(w); sb.setCharAt(i, w[i + 1]); sb.setCharAt(i + 1, w[i]); emit(sb.toString())
+        }
+        for (i in 0 until n) for (a in NEIGHBORS[w[i]] ?: "") {
+            sb.setLength(0); sb.append(w); sb.setCharAt(i, a); emit(sb.toString())
+        }
+        if (withInsert) for (i in 0..n) for (a in alphabet) {
+            sb.setLength(0); sb.append(w, 0, i).append(a).append(w, i, n); emit(sb.toString())
+        }
     }
 
     private fun collectEdits1(w: String, lex: Lexicon, alphabet: String, out: MutableSet<Int>) {
@@ -105,38 +193,69 @@ class SpellEngine(private val lexicons: Map<Lang, Lexicon>) {
      */
     fun correction(word: String, lang: Lang, langConfident: Boolean = true): String? {
         if (!langConfident) {
-            // idioma aún incierto: vale la corrección de cualquiera de los dos si no se contradicen
-            val a = correctionIn(word, lang)
-            val b = correctionIn(word, if (lang == Lang.EN) Lang.ES else Lang.EN)
+            // idioma aún incierto: vale la corrección de cualquiera de los dos; si discrepan, la de mayor puntuación
+            val a = correctionCandidate(word, lang)
+            val b = correctionCandidate(word, if (lang == Lang.EN) Lang.ES else Lang.EN)
             return when {
-                a == null -> b
-                b == null || a == b -> a
-                else -> null
+                a == null -> b?.word
+                b == null -> a.word
+                else -> (if (b.score > a.score) b else a).word
             }
         }
-        return correctionIn(word, lang)
+        return correctionCandidate(word, lang)?.word
     }
 
-    private fun correctionIn(word: String, lang: Lang): String? {
+    private fun correctionCandidate(word: String, lang: Lang): Candidate? {
         val w = word.lowercase()
         if (w.length < MIN_AUTOCORRECT_LEN) return null
         if (w in userWords) return null
-        if (lang == Lang.ES) accentFix(w)?.let { return it }
+        if (lang == Lang.ES) accentFix(w)?.let { return Candidate(it, 100.0, 0.0, 1, false) }
         if (isKnown(w)) return null
-        val cands = candidates(w, lang)
+        return decideCandidate(w, candidates(w, lang))
+    }
+
+    /** Umbrales de seguridad de la corrección automática (ajustados con el banco de pruebas). */
+    class Gate(
+        val shortMax: Double = 2.5,          // palabras de hasta 3 letras
+        val singleCostShort: Double = 4.0,   // un error, palabra de hasta 6 letras
+        val singleCostLong: Double = 5.6,    // un error, palabra de 7+ letras
+        val marginSingle: Double = 1.0,
+        val double4: Double = 5.8,           // dos errores: coste máximo según longitud
+        val double6: Double = 6.2,
+        val double7: Double = 7.0,
+        val doubleBand: Int = 600,
+        val marginDouble: Double = 0.3,
+        val splitBand: Int = 500,
+        val freqWeight: Double = FREQ_WEIGHT,
+    )
+
+    /** Decide si la mejor candidata se aplica sola. Muy conservadora: ante la duda, no se toca. */
+    internal fun decide(w: String, candidates: List<Candidate>, g: Gate = gate): String? = decideCandidate(w, candidates, g)?.word
+
+    internal fun decideCandidate(w: String, candidates: List<Candidate>, g: Gate = gate): Candidate? {
+        val cands = if (g.freqWeight == FREQ_WEIGHT) candidates else candidates.sortedByDescending { it.score(g.freqWeight) }
         val top = cands.firstOrNull() ?: return null
         if (top.crossLang) return null
-        val maxCost = when {
-            w.length <= 3 -> 2.5
-            top.edits == 2 -> if (w.length >= 7) 6.5 else return null
-            w.length >= 7 -> 5.6
-            else -> 4.0
+        val ok = when {
+            top.split -> w.length >= 6 && top.band <= g.splitBand
+            w.length <= 3 -> top.cost <= g.shortMax
+            top.edits >= 2 -> w.length >= 4 && top.band <= g.doubleBand && top.cost <= when {
+                w.length == 4 -> g.double4
+                w.length <= 6 -> g.double6
+                else -> g.double7
+            }
+            else -> top.cost <= if (w.length >= 7) g.singleCostLong else g.singleCostShort
         }
-        if (top.cost > maxCost) return null
+        if (!ok) return null
+        // otra opción casi igual de buena -> mejor no tocar (ya aparece en la barra); en palabras largas hay menos ambigüedad
         val second = cands.getOrNull(1)
-        if (second != null && top.score - second.score < MARGIN) return null
-        return top.word
+        val lenFactor = if (w.length <= 4) 1.0 else if (w.length <= 6) 0.8 else 0.6
+        val margin = (if (top.edits >= 2) g.marginDouble else g.marginSingle) * lenFactor
+        if (second != null && top.score(g.freqWeight) - second.score(g.freqWeight) < margin) return null
+        return top
     }
+
+    internal var gate = Gate()
 
     /**
      * Castellano: palabras que existen pero casi siempre son la versión sin ñ o sin tilde de otra:
@@ -159,20 +278,29 @@ class SpellEngine(private val lexicons: Map<Lang, Lexicon>) {
 
     class Dist(val cost: Double, val edits: Int)
 
+    /** Costes de cada tipo de error de dedo (menor = error más probable). */
+    class Costs(
+        val transpose: Double = 1.75,
+        val neighbor: Double = 2.0,
+        val subst: Double = 5.5,
+        val indel: Double = 3.0,
+        val cheapIndel: Double = 2.5,
+        val apostrophe: Double = 1.5,
+        val accent: Double = 1.0,
+        val firstLetter: Double = 1.5,
+        val firstNeighbor: Double = 0.5,
+    )
+
     companion object {
         const val MIN_AUTOCORRECT_LEN = 3
-        private const val MARGIN = 1.0
-        private const val FREQ_WEIGHT = 0.5
+        private const val CHEAP_ENOUGH = 2.6
+        private const val DOUBLE_MAX_BAND = 600 // para cortar la búsqueda barata (stage 2)
+        private const val SPLIT_COST = 3.2
+        private const val SHORT_PART_BAND = 300
+        private const val SPLIT_MAX_BAND = 560
+        const val FREQ_WEIGHT = 0.5
         private const val CROSS_LANG_COST = 2.0
 
-        private const val TRANSPOSE = 2.0
-        private const val NEIGHBOR = 2.5
-        private const val SUBST = 5.5
-        private const val INDEL = 3.5
-        private const val CHEAP_INDEL = 2.5
-        private const val APOSTROPHE = 1.5
-        private const val ACCENT = 1.0
-        private const val FIRST_LETTER = 1.5
         private const val PHONETIC = 3.0
 
         /** Pronombres enclíticos, de más largo a más corto. */
@@ -196,68 +324,95 @@ class SpellEngine(private val lexicons: Map<Lang, Lexicon>) {
             else -> c
         }
 
+        /** Teclas vecinas de cada tecla (para generar errores de dedo). */
+        private val NEIGHBORS: Map<Char, String> = POS.keys.associateWith { c -> POS.keys.filter { it != c && isNeighborRaw(c, it) }.joinToString("") }
+
+        private fun isNeighborRaw(a: Char, b: Char): Boolean {
+            val pa = POS[a] ?: return false
+            val pb = POS[b] ?: return false
+            return abs(pa.first - pb.first) <= 1.0 && abs(pa.second - pb.second) <= 1
+        }
+
         fun isNeighbor(a: Char, b: Char): Boolean {
             val pa = POS[base(a)] ?: return false
             val pb = POS[base(b)] ?: return false
             return abs(pa.first - pb.first) <= 1.0 && abs(pa.second - pb.second) <= 1
         }
 
-        private fun subCost(a: Char, b: Char): Double = when {
+        private fun subCost(a: Char, b: Char, c: Costs): Double = when {
             a == b -> 0.0
-            base(a) == base(b) || (a == 'n' && b == 'ñ') || (a == 'ñ' && b == 'n') -> ACCENT
-            isNeighbor(a, b) -> NEIGHBOR
-            else -> SUBST
+            base(a) == base(b) || (a == 'n' && b == 'ñ') || (a == 'ñ' && b == 'n') -> c.accent
+            isNeighbor(a, b) -> c.neighbor
+            else -> c.subst
         }
 
         /**
          * Distancia de Damerau (OSA) ponderada entre lo tecleado [a] y la candidata [b].
          * Borrar a[i] = el usuario pulsó una tecla de más; insertar b[j] = se dejó una letra.
          */
-        fun distance(a: String, b: String): Dist {
+        internal var costs = Costs()
+
+        fun distance(a: String, b: String, c: Costs = costs): Dist {
             val la = a.length
             val lb = b.length
             val w = lb + 1
             val d = DoubleArray((la + 1) * w)
             val e = IntArray((la + 1) * w)
-            for (i in 1..la) { d[i * w] = d[(i - 1) * w] + extraCost(a, i - 1); e[i * w] = i }
-            for (j in 1..lb) { d[j] = d[j - 1] + missingCost(b, j - 1); e[j] = j }
+            for (i in 1..la) { d[i * w] = d[(i - 1) * w] + extraCost(a, i - 1, c); e[i * w] = i }
+            for (j in 1..lb) { d[j] = d[j - 1] + missingCost(b, j - 1, c); e[j] = j }
             for (i in 1..la) for (j in 1..lb) {
                 val ca = a[i - 1]
                 val cb = b[j - 1]
-                var best = d[(i - 1) * w + j] + extraCost(a, i - 1)
+                var best = d[(i - 1) * w + j] + extraCost(a, i - 1, c)
                 var be = e[(i - 1) * w + j] + 1
-                val ins = d[i * w + j - 1] + missingCost(b, j - 1)
+                val ins = d[i * w + j - 1] + missingCost(b, j - 1, c)
                 if (ins < best) { best = ins; be = e[i * w + j - 1] + 1 }
-                val sc = subCost(ca, cb)
+                val sc = subCost(ca, cb, c)
                 val sub = d[(i - 1) * w + j - 1] + sc
                 if (sub < best) { best = sub; be = e[(i - 1) * w + j - 1] + if (ca == cb) 0 else 1 }
                 if (i > 1 && j > 1 && ca == b[j - 2] && a[i - 2] == cb && ca != cb) {
-                    val t = d[(i - 2) * w + j - 2] + TRANSPOSE
+                    val t = d[(i - 2) * w + j - 2] + c.transpose
                     if (t < best) { best = t; be = e[(i - 2) * w + j - 2] + 1 }
                 }
                 d[i * w + j] = best
                 e[i * w + j] = be
             }
             var cost = d[la * w + lb]
-            if (la > 0 && lb > 0 && base(a[0]) != base(b[0])) cost += FIRST_LETTER
+            if (la > 0 && lb > 0 && base(a[0]) != base(b[0])) cost += if (isNeighbor(a[0], b[0])) c.firstNeighbor else c.firstLetter
             return Dist(cost, e[la * w + lb])
         }
 
         /** Coste de que a[i] sobre (tecla de más). Barato si es letra repetida o vecina de la de al lado. */
-        private fun extraCost(a: String, i: Int): Double {
+        private fun extraCost(a: String, i: Int, k: Costs): Double {
             val c = a[i]
-            if (c == '\'') return APOSTROPHE
-            if (i > 0 && (a[i - 1] == c || isNeighbor(a[i - 1], c))) return CHEAP_INDEL
-            if (i + 1 < a.length && (a[i + 1] == c || isNeighbor(a[i + 1], c))) return CHEAP_INDEL
-            return INDEL
+            if (c == '\'') return k.apostrophe
+            if (i > 0 && (a[i - 1] == c || isNeighbor(a[i - 1], c))) return k.cheapIndel
+            if (i + 1 < a.length && (a[i + 1] == c || isNeighbor(a[i + 1], c))) return k.cheapIndel
+            return k.indel
         }
 
         /** Coste de que falte b[j]. Barato si es apóstrofo o parte de una letra doble. */
-        private fun missingCost(b: String, j: Int): Double {
+        private fun missingCost(b: String, j: Int, k: Costs): Double {
             val c = b[j]
-            if (c == '\'') return APOSTROPHE
-            if ((j > 0 && b[j - 1] == c) || (j + 1 < b.length && b[j + 1] == c)) return CHEAP_INDEL
-            return INDEL
+            if (c == '\'') return k.apostrophe
+            if ((j > 0 && b[j - 1] == c) || (j + 1 < b.length && b[j + 1] == c)) return k.cheapIndel
+            return k.indel
+        }
+
+        /** Distancia de edición simple (cada cambio cuenta 1; el intercambio de dos letras seguidas, 1). */
+        internal fun unitDistance(a: String, b: String): Int {
+            val la = a.length
+            val lb = b.length
+            val w = lb + 1
+            val d = IntArray((la + 1) * w)
+            for (i in 0..la) d[i * w] = i
+            for (j in 0..lb) d[j] = j
+            for (i in 1..la) for (j in 1..lb) {
+                var v = minOf(d[(i - 1) * w + j] + 1, d[i * w + j - 1] + 1, d[(i - 1) * w + j - 1] + if (a[i - 1] == b[j - 1]) 0 else 1)
+                if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1]) v = minOf(v, d[(i - 2) * w + j - 2] + 1)
+                d[i * w + j] = v
+            }
+            return d[la * w + lb]
         }
 
         /** Aplica a [corrected] el patrón de mayúsculas de [original]. */

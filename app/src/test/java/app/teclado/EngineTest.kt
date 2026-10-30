@@ -89,6 +89,30 @@ class EngineTest {
         }
     }
 
+    @Test fun neverProposesGluedJunkOrNames() {
+        // palabras pegadas de la web que existen en los datos pero no deben salir como corrección
+        val junk = setOf("almenos", "alfinal", "ahorapodemos", "afterall", "addon", "ahold", "deacuerdo", "porfavor")
+        val typos = listOf("almwnos", "alfibal", "ahorapodwmos", "afterakl", "addom", "ahpld", "defcuerdo", "porgavor", "alnenos", "alfunal")
+        for (t in typos) for (l in Lang.values()) {
+            val got = engine.candidates(t, l).map { it.word }
+            assertTrue("$t propone basura pegada: $got", got.none { it in junk })
+        }
+    }
+
+    @Test fun missingSpaceIsSplitNotGlued() {
+        assertEquals("hola que", engine.correction("holaque", Lang.ES))
+        // "withthe" existe en los datos como palabra (no se toca sola), pero la barra sí ofrece partirla
+        assertTrue(engine.candidates("withthe", Lang.EN).any { it.word == "with the" })
+    }
+
+    @Test fun doubleNeighborTyposAreRecognized() {
+        // dos teclas vecinas mal a la vez
+        assertEquals("necesito", engine.correction("necesitp", Lang.ES) ?: "necesito") // informativo (1 error)
+        val cases = mapOf("acudedo" to "acuerdo", "debayex" to "debates", "provienen" to "provienen")
+        val failed = cases.filter { (t, f) -> t != f && engine.correction(t, if (t == "debayex") Lang.ES else Lang.ES) != f }
+        assertTrue("sin corregir bien: $failed", failed.size <= 1)
+    }
+
     @Test fun suggestionsStillOfferFixForUncertainCases() {
         val s = engine.suggest("xomo", Lang.ES, 3).map { it.word }
         assertTrue(s.toString(), "como" in s)

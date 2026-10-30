@@ -24,8 +24,9 @@ Sin ese fichero, la release se genera sin firmar (es lo que hace GitHub Actions 
 - Corrección en inglés y castellano con detección automática del idioma. Nunca corrige una palabra que exista
   en cualquiera de los dos idiomas (~280.000 palabras por idioma, conjugaciones raras, tecnicismos, coloquialismos,
   verbos con pronombres pegados como «escanéalo»). Tampoco toca nombres propios a mitad de frase ni palabras que
-  ya hayas escrito antes en el mismo texto. Corrige errores de tecla vecina, letras cambiadas, tildes y ñ,
-  y errores "por sonido" del castellano (nesecito → necesito).
+  ya hayas escrito antes en el mismo texto. Corrige errores de tecla vecina (también dos a la vez), letras cambiadas o
+  de menos, tildes y ñ, y errores "por sonido" del castellano (nesecito → necesito). Si te falta un espacio
+  (holaque) lo parte (hola que). Las correcciones salen solo de palabras reales: no de basura pegada de la web.
 - Tras corregir, la barra muestra «↶ original» para deshacer con un toque (o borra justo después).
   Las palabras que mantienes, o que escribes dos veces, se aprenden; se gestionan en los ajustes.
 - Mantener borrar: primero letra a letra y, pasado un momento, palabra a palabra.

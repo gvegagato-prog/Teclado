@@ -40,6 +40,8 @@ class HubLink(
     private val onConnected: () -> Unit,
     private val onMessage: (Msg) -> Unit,
     private val onStatus: (String) -> Unit,
+    /** Estado real del hotspot del móvil (Protocol.STATE_*), en cuanto cambia. */
+    private val onHotspotState: (Int) -> Unit = {},
 ) {
     private val thread = HandlerThread("pera-link").apply { start() }
     private val handler = Handler(thread.looper)
@@ -227,6 +229,14 @@ class HubLink(
 
         override fun onDescriptorWrite(g: BluetoothGatt, d: BluetoothGattDescriptor, status: Int) {
             opDone()
+            if (d.characteristic.uuid == Protocol.STATE) {
+                // Avisos del estado del hotspot activados: se lee el actual.
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    val c = d.characteristic
+                    enqueue { g.readCharacteristic(c) }
+                }
+                return
+            }
             if (d.characteristic.uuid != Protocol.MSG_OUT) return
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 connected = true
@@ -234,6 +244,7 @@ class HubLink(
                 pendingHubId?.let { if (Prefs.pairedHubId(context) == null) Prefs.setPairedHubId(context, it) }
                 onStatus("Conectado al móvil")
                 onConnected()
+                g.getService(Protocol.SERVICE)?.getCharacteristic(Protocol.STATE)?.let { subscribe(g, it) }
             } else if (subscribeAttempts++ < 2) {
                 // Falta emparejar: Android muestra el aviso; se reintenta al terminar.
                 if (g.device.bondState != BluetoothDevice.BOND_BONDED) g.device.createBond()
@@ -248,7 +259,23 @@ class HubLink(
             opDone()
         }
 
+        override fun onCharacteristicRead(g: BluetoothGatt, c: BluetoothGattCharacteristic, value: ByteArray, status: Int) {
+            opDone()
+            if (c.uuid == Protocol.STATE && status == BluetoothGatt.GATT_SUCCESS) value.firstOrNull()?.let { onHotspotState(it.toInt()) }
+        }
+
+        @Deprecated("API < 33")
+        override fun onCharacteristicRead(g: BluetoothGatt, c: BluetoothGattCharacteristic, status: Int) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) return
+            @Suppress("DEPRECATION")
+            onCharacteristicRead(g, c, c.value ?: ByteArray(0), status)
+        }
+
         override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic, value: ByteArray) {
+            if (c.uuid == Protocol.STATE) {
+                value.firstOrNull()?.let { onHotspotState(it.toInt()) }
+                return
+            }
             if (c.uuid != Protocol.MSG_OUT) return
             assembler.add(value)?.let { Msg.decode(it) }?.let(onMessage)
         }

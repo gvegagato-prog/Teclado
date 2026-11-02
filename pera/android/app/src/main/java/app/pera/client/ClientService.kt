@@ -3,13 +3,12 @@ package app.pera.client
 import android.app.Notification
 import android.app.NotificationManager
 import android.app.Service
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.IBinder
-import android.service.quicksettings.TileService
 import app.pera.Notifications
+import app.pera.Prefs
 import app.pera.R
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -30,14 +29,25 @@ class ClientService : Service() {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
         )
         if (!busy.compareAndSet(false, true)) return START_NOT_STICKY
+        markWorking()
         Thread {
             val nm = getSystemService(NotificationManager::class.java)
-            val result = PeraClient(this) { nm.notify(Notifications.CLIENT_ID, notification(it)) }.run(turnOn)
+            val result = if (Prefs.hostEnabled(this)) {
+                // El botón está en el propio móvil: se enciende/apaga aquí mismo.
+                val error = app.pera.host.HotspotController(this).let { if (turnOn) it.start() else it.stop() }
+                PeraClient.Result(error == null, error ?: if (turnOn) "Hotspot encendido" else "Hotspot apagado", turnOn && error == null)
+            } else {
+                PeraClient(this) { nm.notify(Notifications.CLIENT_ID, notification(it)) }.run(turnOn)
+            }
             lastMessage = result.message
-            TileService.requestListeningState(this, ComponentName(this, HotspotTileService::class.java))
+            // Encender: el botón queda encendido solo si funcionó. Apagar: queda apagado siempre (si el
+            // móvil no responde es que no está cerca, y entonces tampoco estás usando sus datos).
+            Prefs.setClientLastOn(this, turnOn && result.ok)
+            workingSince = 0
+            HotspotTileService.refresh(this)
             stopForeground(STOP_FOREGROUND_REMOVE)
-            // Aviso final breve con el resultado.
-            nm.notify(Notifications.CLIENT_ID, resultNotification(result))
+            // Función discreta: solo se avisa si algo ha ido mal.
+            if (!result.ok) nm.notify(Notifications.CLIENT_ID, resultNotification(result))
             busy.set(false)
             stopSelf()
         }.start()
@@ -45,7 +55,7 @@ class ClientService : Service() {
     }
 
     private fun notification(text: String): Notification =
-        Notification.Builder(this, Notifications.CHANNEL)
+        Notification.Builder(this, Notifications.CHANNEL_BG)
             .setSmallIcon(R.drawable.ic_pera)
             .setContentTitle(getString(R.string.app_name))
             .setContentText(text)
@@ -66,6 +76,17 @@ class ClientService : Service() {
         const val EXTRA_ON = "on"
 
         @Volatile var lastMessage: String? = null
+
+        @Volatile private var workingSince = 0L
+
+        /** Hay una orden en curso (el botón del panel no acepta otra hasta que termine). Caduca a los
+         *  90 s por si el servicio no llegó a arrancar. */
+        val working: Boolean
+            get() = workingSince != 0L && System.currentTimeMillis() - workingSince < 90_000
+
+        fun markWorking() {
+            workingSince = System.currentTimeMillis()
+        }
 
         fun intent(context: Context, turnOn: Boolean) =
             Intent(context, ClientService::class.java).putExtra(EXTRA_ON, turnOn)

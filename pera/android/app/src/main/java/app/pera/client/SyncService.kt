@@ -10,6 +10,8 @@ import android.content.pm.ServiceInfo
 import android.os.IBinder
 import app.pera.MainActivity
 import app.pera.Notifications
+import app.pera.Prefs
+import app.pera.Protocol
 import app.pera.R
 import app.pera.shell.Shell
 import app.pera.sync.ClipWatcher
@@ -34,6 +36,7 @@ class SyncService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        running = true
         store = SyncStore(this)
         startForeground(
             Notifications.SYNC_ID, notification(getString(R.string.sync_searching)),
@@ -43,6 +46,7 @@ class SyncService : Service() {
             this,
             onConnected = { worker.execute(::greet) },
             onMessage = { m -> worker.execute { handle(m) } },
+            onHotspotState = { s -> hotspotState(s) },
             onStatus = { s ->
                 status = s
                 getSystemService(NotificationManager::class.java).notify(Notifications.SYNC_ID, notification(s))
@@ -61,6 +65,7 @@ class SyncService : Service() {
         link.stop()
         worker.shutdownNow()
         status = null
+        running = false
         super.onDestroy()
     }
 
@@ -91,6 +96,20 @@ class SyncService : Service() {
         }
     }
 
+    /** El móvil avisa del estado real de su hotspot: el botón del panel lo refleja. */
+    private fun hotspotState(s: Int) {
+        if (ClientService.working) return // hay una orden en curso: manda su resultado
+        val on = when (s) {
+            Protocol.STATE_ON, Protocol.STATE_TURNING_ON -> true
+            Protocol.STATE_OFF, Protocol.STATE_TURNING_OFF, Protocol.STATE_FAILED -> false
+            else -> return
+        }
+        if (Prefs.clientLastOn(this) != on) {
+            Prefs.setClientLastOn(this, on)
+            HotspotTileService.refresh(this)
+        }
+    }
+
     private fun localClip(text: String) {
         val clip = SyncStore.newClip(text, store.deviceName)
         store.clip = clip
@@ -99,7 +118,7 @@ class SyncService : Service() {
 
     private fun notification(text: String): Notification {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        return Notification.Builder(this, Notifications.CHANNEL)
+        return Notification.Builder(this, Notifications.CHANNEL_BG)
             .setSmallIcon(R.drawable.ic_pera)
             .setContentTitle(getString(R.string.sync_title))
             .setContentText(text)
@@ -110,6 +129,9 @@ class SyncService : Service() {
 
     companion object {
         @Volatile var status: String? = null
+            private set
+
+        @Volatile var running = false
             private set
 
         fun start(context: Context) {

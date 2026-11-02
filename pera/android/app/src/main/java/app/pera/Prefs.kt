@@ -25,6 +25,7 @@ object Prefs {
     /** En clientes: identificador del móvil de este usuario (null hasta la primera conexión). */
     fun pairedHubId(c: Context): ByteArray? = prefs(c).getString("paired_hub", null)?.let(::hex)
     fun setPairedHubId(c: Context, id: ByteArray) = prefs(c).edit().putString("paired_hub", hex(id)).apply()
+    fun forgetPairedHub(c: Context) = prefs(c).edit().remove("paired_hub").apply()
 
     fun hex(b: ByteArray) = b.joinToString("") { "%02x".format(it) }
     fun hex(s: String) = ByteArray(s.length / 2) { s.substring(it * 2, it * 2 + 2).toInt(16).toByte() }

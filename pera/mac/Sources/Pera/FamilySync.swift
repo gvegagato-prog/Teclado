@@ -34,6 +34,13 @@ final class FamilySync: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.checkPasteboard() }
     }
 
+    /// Para volver a emparejar (p. ej. tras reinstalar Pera en el móvil, que cambia su identificador).
+    func forgetHub() {
+        UserDefaults.standard.removeObject(forKey: "pairedHub")
+        link.restart()
+        status = "Buscando un móvil con Pera…"
+    }
+
     // MARK: - Mensajes
 
     private func greet() {

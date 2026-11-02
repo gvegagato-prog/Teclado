@@ -38,6 +38,7 @@ struct MenuContent: View {
                 family.addPendingNetworks()
             }
         }
+        Button("Olvidar el móvil emparejado") { family.forgetHub() }
         Divider()
         Toggle("Abrir al iniciar sesión", isOn: Binding(
             get: { model.launchAtLogin },
@@ -55,6 +56,15 @@ final class PeraModel: ObservableObject {
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     private let link = PeraLink()
+
+    init() {
+        // Funciona escondida: la primera vez se activa sola al iniciar sesión (se puede quitar en el menú).
+        if !UserDefaults.standard.bool(forKey: "loginItemSet") {
+            UserDefaults.standard.set(true, forKey: "loginItemSet")
+            try? SMAppService.mainApp.register()
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+        }
+    }
 
     var symbol: String {
         if busy { return "ellipsis.circle" }

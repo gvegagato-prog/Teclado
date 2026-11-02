@@ -106,6 +106,32 @@ Si el móvil no está, la tablet y el Mac no se sincronizan entre ellos.
   Teclado como teclado o instala también Shizuku.
 - **Mac**: viene activada; los interruptores están en el menú de Pera.
 
+## Funciona escondida
+
+Pera no necesita estar abierta. Una vez activada:
+- **No aparece en recientes**, así que no se puede cerrar por error al limpiar apps.
+- **Se recupera sola** si Android la para: la reactivan un trabajo periódico del sistema (cada 15 min),
+  tocar el botón del panel, cada copia que llega de Teclado, el reinicio del dispositivo o abrir la app.
+  Para que Android se lo permita hay que pulsar **«Permitir que Pera funcione en segundo plano»**
+  (quitar la optimización de batería): es la excepción que Android documenta para esto.
+- **Aviso permanente mínimo**: Android obliga a que un servicio permanente tenga notificación; la de
+  Pera va en el canal «Pera en segundo plano», de importancia mínima (sin icono en la barra de estado,
+  plegada al fondo). Solo avisa de verdad si algo falla.
+- En el **Mac**, la primera vez queda activada «Abrir al iniciar sesión».
+
+Lo único que no se puede saltar es **«Forzar detención»** (en Ajustes, o la limpieza agresiva de
+algunos fabricantes): Android cancela todo hasta que se vuelve a usar Pera (tocar el botón del panel
+basta). En **OPPO/ColorOS**, además: ajustes de la app › batería › permitir **actividad en segundo plano**
+e **inicio automático**.
+
+### El botón del panel
+- Cambia al instante al tocarlo y muestra «Conectando…» o «Apagando…» mientras trabaja.
+- Si la tablet tiene activada la sincronización, el botón refleja el **estado real** del hotspot del
+  móvil (también si lo enciende o apaga el Mac).
+- Si al apagar el móvil no responde, el botón queda apagado igualmente (si no está cerca, tampoco estás
+  usando sus datos).
+- En el propio móvil, el botón enciende y apaga su hotspot directamente.
+
 ## Limitaciones (sin adornos)
 
 - **El icono no va dentro del desplegable Wi-Fi del Mac** ni del panel de Wi-Fi de Android: Apple y
@@ -128,6 +154,11 @@ Si el móvil no está, la tablet y el Mac no se sincronizan entre ellos.
 - **Teclado → Pera** necesita Android 14 o posterior (para que Pera sepa con certeza que la copia la
   envía Teclado y no otra app).
 - La operadora puede bloquear el hotspot en algunas tarifas; Pera no puede saltárselo.
+
+## Firma
+Teclado y Pera se firman con la misma clave (`keystore.properties` en la raíz de cada proyecto, fuera
+del repo). Guarda el archivo `.jks` y su contraseña: sin ellos, una versión nueva no se instala encima
+de la anterior y hay que desinstalar (perdiendo los ajustes).
 
 ## Compilar
 

@@ -79,6 +79,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        Watchdog.ensure(this)
         main.post(ticker)
     }
 
@@ -156,6 +157,10 @@ class MainActivity : Activity() {
         root.addView(syncSource)
         syncStatus = text("")
         root.addView(syncStatus)
+        root.addView(button(getString(R.string.forget_hub)) {
+            Prefs.forgetPairedHub(this) // se aplica en la próxima búsqueda del móvil
+            clientText.text = getString(R.string.forget_hub_done)
+        })
 
         return ScrollView(this).apply { addView(root) }
     }

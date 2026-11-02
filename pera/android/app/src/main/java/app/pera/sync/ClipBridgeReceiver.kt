@@ -20,6 +20,7 @@ class ClipBridgeReceiver : BroadcastReceiver() {
             return
         }
         val text = intent.getStringExtra(EXTRA_TEXT) ?: return
+        app.pera.Watchdog.ensure(context) // si Android había parado los servicios, vuelven
         SyncBus.localCopy(context, text)
     }
 

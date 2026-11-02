@@ -79,6 +79,7 @@ class HostService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        running = true
         hotspot = HotspotController(this)
         bluetooth = getSystemService(BluetoothManager::class.java)
         startForeground(
@@ -117,6 +118,7 @@ class HostService : Service() {
         stopBle()
         hub.shutdown()
         worker.shutdownNow()
+        running = false
         super.onDestroy()
     }
 
@@ -419,7 +421,7 @@ class HostService : Service() {
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
         )
-        return Notification.Builder(this, Notifications.CHANNEL)
+        return Notification.Builder(this, Notifications.CHANNEL_BG)
             .setSmallIcon(R.drawable.ic_pera)
             .setContentTitle(getString(R.string.host_notification_title))
             .setContentText(getString(R.string.host_notification_text))
@@ -430,6 +432,9 @@ class HostService : Service() {
 
     companion object {
         private const val TAG = "PeraHost"
+
+        @Volatile var running = false
+            private set
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, HostService::class.java))

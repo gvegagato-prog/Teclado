@@ -2,6 +2,7 @@
 <resources>
     <string name="app_name">Pera</string>
     <string name="channel_name">Pera</string>
+    <string name="channel_bg_name">Pera en segundo plano</string>
     <string name="intro">Usa los datos de tu móvil desde la tablet o el Mac sin sacar el móvil del bolsillo. Instala Pera en los dos Android: en el móvil activa «Compartir», en la tablet usa el botón del panel.</string>
 
     <string name="host_title">Este es mi móvil (comparte datos)</string>
@@ -52,6 +53,8 @@
     <string name="sync_status">Estado: %1$s</string>
     <string name="sync_hub">este móvil es el centro de la familia</string>
     <string name="sync_off">desactivada en este dispositivo</string>
+    <string name="forget_hub">Olvidar el móvil emparejado</string>
+    <string name="forget_hub_done">Hecho: la próxima conexión buscará cualquier móvil con Pera.</string>
     <string name="share_label">Enviar a la familia Pera</string>
     <string name="share_sent">Enviado a la familia Pera</string>
     <string name="share_no_service">Pera no está activo en este dispositivo</string>

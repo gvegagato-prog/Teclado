@@ -18,6 +18,8 @@ object PeraBridge {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return // Pera no podría verificarlo
         if (runCatching { context.packageManager.getPackageInfo(PERA_PACKAGE, 0) }.isFailure) return
         val intent = Intent(ACTION).setPackage(PERA_PACKAGE).putExtra("text", text)
+            // Aunque Android haya detenido Pera, la despierta (y Pera vuelve a arrancar sus servicios).
+            .addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
         val options = BroadcastOptions.makeBasic().setShareIdentityEnabled(true)
         runCatching { context.sendBroadcast(intent, null, options.toBundle()) }
     }

@@ -27,6 +27,15 @@ final class SyncLink: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         central = CBCentralManager(delegate: self, queue: .main)
     }
 
+    /// Suelta el móvil actual y busca de nuevo (tras olvidar el emparejado).
+    func restart() {
+        if let p = peripheral { central?.cancelPeripheralConnection(p) }
+        peripheral = nil
+        lost()
+        central?.stopScan()
+        scan()
+    }
+
     func send(_ msg: Msg) {
         guard connected, let p = peripheral else { return }
         // Fragmentos del tamaño de una escritura sin troceo del sistema (MTU - 3): el móvil no acepta
@@ -88,12 +97,14 @@ final class SyncLink: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        guard peripheral === self.peripheral else { return } // aviso de un móvil ya olvidado
         // Se vuelve a buscar desde cero (puede que no fuera nuestro móvil).
         self.peripheral = nil
         scan()
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        guard peripheral === self.peripheral else { return } // aviso de un móvil ya olvidado
         let wasConnected = connected
         lost()
         if wasConnected {

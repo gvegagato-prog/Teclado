@@ -18,8 +18,8 @@ android {
         applicationId = "app.pera"
         minSdk = 31 // Android 12: permisos de Bluetooth modernos
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2"
+        versionCode = 3
+        versionName = "0.3"
     }
 
     signingConfigs {
@@ -35,8 +35,9 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // Sin minificar: Pera llama por reflexión a clases internas del sistema y sobrescribe
+            // métodos de interfaces ocultas; reducir el código podría renombrarlos sin avisar.
+            isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("release")
         }

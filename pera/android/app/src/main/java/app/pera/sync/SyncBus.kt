@@ -40,17 +40,16 @@ object SyncBus {
     @Volatile var onLocalMsg: ((Msg) -> Unit)? = null
 
     /**
-     * Imagen copiada aquí (de Teclado o de «Compartir»): se reduce y se reparte. Bloqueante (decodifica
-     * la imagen): llamar desde un hilo de fondo.
+     * Imagen copiada aquí (de Teclado o de «Compartir»): se guarda tal cual (calidad completa) y se
+     * reparte; solo se reducirá si a algún dispositivo no le llega por la red local.
      */
     fun localImage(context: Context, source: ByteArray) {
         val store = SyncStore(context)
         if (!store.clipEnabled) return
-        val jpeg = Images.reduce(source) ?: return store.noteClip("imagen no reconocida")
-        if (Images.hash(jpeg) == SyncStore.lastAppliedImage || Images.hash(source) == SyncStore.lastAppliedImage) return
-        val img = Msg.Img(java.util.UUID.randomUUID().toString(), System.currentTimeMillis(), store.deviceName, "image/jpeg", jpeg)
+        if (Images.hash(source) == SyncStore.lastAppliedImage) return // es la que acabamos de poner nosotros
+        val img = Msg.Img(java.util.UUID.randomUUID().toString(), System.currentTimeMillis(), store.deviceName, Images.sniff(source), source)
         store.setImage(img)
-        store.noteClip("imagen copiada aquí (${jpeg.size / 1024} KB)")
+        store.noteClip("imagen copiada aquí (${source.size / 1024} KB)")
         onLocalMsg?.invoke(img) // si no hay servicio aún, sale al conectar por ser lo más reciente
     }
 

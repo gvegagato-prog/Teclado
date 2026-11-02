@@ -22,7 +22,10 @@ class SyncHub(private val context: Context, private val transport: Transport) {
     private val store = SyncStore(context)
     private val worker = Executors.newSingleThreadExecutor()
 
-    fun shutdown() = worker.shutdownNow()
+    fun shutdown() {
+        worker.shutdownNow()
+        fetcher.shutdownNow()
+    }
 
     fun onMessage(peer: String, msg: Msg) = worker.execute {
         when (msg) {
@@ -30,18 +33,27 @@ class SyncHub(private val context: Context, private val transport: Transport) {
                 Log.i(TAG, "Hola de ${msg.device}")
                 // Lo último copiado (texto o imagen), si el cliente no lo tiene.
                 val latest = store.latest
-                if (store.clipEnabled && latest != null && store.latestTs > msg.clipTs) transport.send(peer, latest)
+                if (store.clipEnabled && latest != null && store.latestTs > msg.clipTs) {
+                    if (latest is Msg.Img) sendImage(peer, latest) else transport.send(peer, latest)
+                }
                 if (store.pinsEnabled) store.pins?.let { transport.send(peer, it) }
                 if (store.wifiEnabled) {
                     transport.send(peer, Msg.Nets(store.nets))
                     transport.send(peer, Msg.Here(store.here))
                 }
             }
-            is Msg.Img -> if (store.clipEnabled && SyncRules.acceptCopy(store.latestTs, store.latestId, msg.ts, msg.id)) {
-                store.noteClip("imagen recibida de ${msg.from} (${msg.data.size / 1024} KB)")
-                store.setImage(msg)
-                SyncBus.applyImage(context, msg)
-                broadcast(msg, except = peer)
+            is Msg.Img -> gotImage(msg, peer, "por Bluetooth, reducida")
+            is Msg.ImgRef -> if (store.clipEnabled && SyncRules.acceptCopy(store.latestTs, store.latestId, msg.ts, msg.id) && fetching.add(msg.id)) {
+                // Descarga por la red local en otro hilo (puede tardar); si no hay red común, se pide reducida.
+                fetcher.execute {
+                    val img = LanShare.fetch(msg)
+                    fetching.remove(msg.id)
+                    if (img != null) worker.execute { gotImage(img, peer, "por la red, calidad completa") }
+                    else transport.send(peer, Msg.ImgReq(msg.id))
+                }
+            }
+            is Msg.ImgReq -> store.image?.takeIf { it.id == msg.id }?.let { img ->
+                reduced(img)?.let { transport.send(peer, it) }
             }
             is Msg.Pins -> if (store.pinsEnabled && SyncRules.acceptPins(store.pins, msg)) {
                 store.pins = msg
@@ -70,9 +82,31 @@ class SyncHub(private val context: Context, private val transport: Transport) {
     fun onLocalMsg(msg: Msg) = worker.execute {
         if (msg is Msg.Img) {
             val n = transport.peers().size
-            store.noteClip(if (n == 0) "imagen copiada; ningún dispositivo conectado" else "imagen enviada a $n dispositivo(s)")
+            store.noteClip(if (n == 0) "imagen copiada; ningún dispositivo conectado" else "imagen ofrecida a $n dispositivo(s)")
+            transport.peers().forEach { sendImage(it, msg) }
+            return@execute
         }
         broadcast(msg, except = null)
+    }
+
+    private val fetcher = Executors.newCachedThreadPool()
+    private val fetching = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+
+    /** Ofrece la imagen por la red local; sin red, va reducida por Bluetooth. */
+    private fun sendImage(peer: String, img: Msg.Img) {
+        val ref = LanShare.offer(img)
+        if (ref != null) transport.send(peer, ref) else reduced(img)?.let { transport.send(peer, it) }
+    }
+
+    private fun reduced(img: Msg.Img): Msg.Img? =
+        Images.reduce(img.data)?.let { Msg.Img(img.id, img.ts, img.from, "image/jpeg", it) }
+
+    private fun gotImage(img: Msg.Img, peer: String, how: String) {
+        if (!store.clipEnabled || !SyncRules.acceptCopy(store.latestTs, store.latestId, img.ts, img.id)) return
+        store.noteClip("imagen de ${img.from} $how (${img.data.size / 1024} KB)")
+        store.setImage(img)
+        SyncBus.applyImage(context, img)
+        transport.peers().filter { it != peer }.forEach { sendImage(it, img) }
     }
 
     /** Copia hecha en el propio móvil. */

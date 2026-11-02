@@ -53,7 +53,7 @@ final class FamilySync: ObservableObject {
         link.send(.hello(device: deviceName, clipTs: latestTs))
         // Lo copiado aquí mientras el móvil no estaba: el móvil se queda con lo más reciente.
         if imageTs > (clip?.ts ?? 0) {
-            if let img = lastImage, img.from == deviceName { link.send(.img(img)) }
+            if let img = lastImage, img.from == deviceName { sendImage(img) }
         } else if let c = clip, c.from == deviceName {
             link.send(.clip(c))
         }
@@ -62,13 +62,19 @@ final class FamilySync: ObservableObject {
     private func handle(_ msg: Msg) {
         switch msg {
         case let .img(i):
-            guard clipEnabled, i.ts > latestTs, i.id != lastImage?.id, let image = NSImage(data: i.data) else { return }
-            lastImage = i
-            let pb = NSPasteboard.general
-            pb.clearContents()
-            pb.writeObjects([image])
-            ownChange = pb.changeCount
-            lastChange = pb.changeCount
+            applyImage(i)
+        case let .imgref(r):
+            guard clipEnabled, r.ts > latestTs, r.id != lastImage?.id, !fetching.contains(r.id) else { return }
+            fetching.insert(r.id)
+            LanShare.shared.fetch(r) { [weak self] img in
+                guard let self else { return }
+                self.fetching.remove(r.id)
+                if let img { self.applyImage(img) } else { self.link.send(.imgreq(r.id)) } // sin red común: por Bluetooth
+            }
+        case let .imgreq(id):
+            if let img = lastImage, img.id == id, let image = NSImage(data: img.data), let small = Self.reduce(image) {
+                link.send(.img(Msg.Img(id: img.id, ts: img.ts, from: img.from, mime: "image/jpeg", data: small)))
+            }
         case let .clip(c):
             guard clipEnabled else { return }
             if c.ts <= latestTs || c.id == clip?.id { return }
@@ -111,10 +117,12 @@ final class FamilySync: ObservableObject {
         // Imagen copiada (captura, foto, imagen de una web…): se reduce y se envía.
         let imageTypes: [NSPasteboard.PasteboardType] = [.png, .tiff, NSPasteboard.PasteboardType("public.jpeg")]
         if pb.availableType(from: imageTypes) != nil, pb.string(forType: .string) == nil,
-           let image = NSImage(pasteboard: pb), let jpeg = Self.reduce(image) {
-            let i = Msg.Img.new(jpeg, from: deviceName)
+           let orig = Self.original(pb) {
+            // Calidad completa: se reduce solo si al móvil no le llega por la red local.
+            let i = Msg.Img(id: UUID().uuidString.lowercased(), ts: Int64(Date().timeIntervalSince1970 * 1000),
+                            from: deviceName, mime: orig.1, data: orig.0)
             lastImage = i
-            link.send(.img(i))
+            sendImage(i)
             return
         }
         guard let text = pb.string(forType: .string), !text.isEmpty, text.count <= Self.maxClipChars else { return }
@@ -122,6 +130,41 @@ final class FamilySync: ObservableObject {
         let c = Msg.Clip.new(text, from: deviceName)
         clip = c
         link.send(.clip(c))
+    }
+
+    private var fetching = Set<String>()
+
+    /// Ofrece la imagen por la red local; si este Mac no tiene red, va reducida por Bluetooth.
+    private func sendImage(_ i: Msg.Img) {
+        LanShare.shared.offer(i) { [weak self] ref in
+            guard let self else { return }
+            if let ref {
+                self.link.send(.imgref(ref))
+            } else if let image = NSImage(data: i.data), let small = Self.reduce(image) {
+                self.link.send(.img(Msg.Img(id: i.id, ts: i.ts, from: i.from, mime: "image/jpeg", data: small)))
+            }
+        }
+    }
+
+    private func applyImage(_ i: Msg.Img) {
+        guard clipEnabled, i.ts > latestTs, i.id != lastImage?.id, let image = NSImage(data: i.data) else { return }
+        lastImage = i
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.writeObjects([image])
+        ownChange = pb.changeCount
+        lastChange = pb.changeCount
+        status = "Imagen de \(i.from) (\(i.data.count / 1024) KB)"
+    }
+
+    /// Los datos originales de la imagen copiada (PNG o JPEG tal cual; TIFF se pasa a PNG, sin pérdida).
+    static func original(_ pb: NSPasteboard) -> (Data, String)? {
+        if let d = pb.data(forType: .png) { return (d, "image/png") }
+        if let d = pb.data(forType: NSPasteboard.PasteboardType("public.jpeg")) { return (d, "image/jpeg") }
+        if let t = pb.data(forType: .tiff), let png = NSBitmapImageRep(data: t)?.representation(using: .png, properties: [:]) {
+            return (png, "image/png")
+        }
+        return nil
     }
 
     /// Reduce una imagen a JPEG con el lado largo de 1600 px (Bluetooth LE es lento: decenas de KB/s).

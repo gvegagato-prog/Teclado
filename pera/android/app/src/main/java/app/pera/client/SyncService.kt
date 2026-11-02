@@ -15,6 +15,8 @@ import app.pera.Protocol
 import app.pera.R
 import app.pera.shell.Shell
 import app.pera.sync.ClipWatcher
+import app.pera.sync.Images
+import app.pera.sync.LanShare
 import app.pera.sync.Msg
 import app.pera.sync.SyncBus
 import app.pera.sync.SyncRules
@@ -54,7 +56,9 @@ class SyncService : Service() {
             },
         )
         SyncBus.onLocalClip = { text -> worker.execute { localClip(text) } }
-        SyncBus.onLocalMsg = { m -> link.send(m); if (m is Msg.Img) noteSent("imagen", m.data.size) }
+        SyncBus.onLocalMsg = { m ->
+            if (m is Msg.Img) worker.execute { sendImage(m); noteSent("imagen", m.data.size) } else link.send(m)
+        }
         clipWatcher = ClipWatcher(this).also { it.begin() }
         rikka.shizuku.Shizuku.addBinderReceivedListenerSticky(shizukuReady)
         main.postDelayed(retry, 30_000)
@@ -65,6 +69,7 @@ class SyncService : Service() {
 
     override fun onDestroy() {
         if (instance === this) instance = null
+        fetcher.shutdownNow()
         main.removeCallbacks(retry)
         rikka.shizuku.Shizuku.removeBinderReceivedListener(shizukuReady)
         SyncBus.onLocalClip = null
@@ -81,7 +86,7 @@ class SyncService : Service() {
         link.send(Msg.Hello(store.deviceName, store.latestTs))
         // Lo copiado aquí mientras el móvil no estaba: el móvil se queda con lo más reciente.
         store.latest?.takeIf { (it as? Msg.Clip)?.from == store.deviceName || (it as? Msg.Img)?.from == store.deviceName }
-            ?.let { link.send(it) }
+            ?.let { if (it is Msg.Img) sendImage(it) else link.send(it) }
         if (store.pinsEnabled) store.pins?.let { link.send(it) }
         if (store.wifiEnabled && Shell.ready()) {
             val own = Shell.savedNetworks()
@@ -89,10 +94,21 @@ class SyncService : Service() {
         }
     }
 
-    private fun handle(m: Msg) {
+    private fun handle(m: Msg, how: String = "por Bluetooth, reducida") {
         when (m) {
+            is Msg.ImgRef -> if (store.clipEnabled && SyncRules.acceptCopy(store.latestTs, store.latestId, m.ts, m.id) && fetching.add(m.id)) {
+                fetcher.execute {
+                    val img = LanShare.fetch(m)
+                    fetching.remove(m.id)
+                    if (img != null) worker.execute { handle(img, "por la red, calidad completa") }
+                    else link.send(Msg.ImgReq(m.id)) // sin red común con el móvil: que la mande reducida
+                }
+            }
+            is Msg.ImgReq -> store.image?.takeIf { it.id == m.id }?.let { img ->
+                Images.reduce(img.data)?.let { link.send(Msg.Img(img.id, img.ts, img.from, "image/jpeg", it)) }
+            }
             is Msg.Img -> if (store.clipEnabled && SyncRules.acceptCopy(store.latestTs, store.latestId, m.ts, m.id)) {
-                store.noteClip("imagen recibida de ${m.from} (${m.data.size / 1024} KB)")
+                store.noteClip("imagen de ${m.from} $how (${m.data.size / 1024} KB)")
                 store.setImage(m)
                 SyncBus.applyImage(this, m)
             }
@@ -185,6 +201,16 @@ class SyncService : Service() {
             Prefs.setClientLastOn(this, on)
             HotspotTileService.refresh(this)
         }
+    }
+
+    private val fetcher = Executors.newCachedThreadPool()
+    private val fetching = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+
+    /** Ofrece la imagen al móvil por la red local; si no hay red, va reducida por Bluetooth. */
+    private fun sendImage(img: Msg.Img) {
+        val ref = LanShare.offer(img)
+        if (ref != null) link.send(ref)
+        else Images.reduce(img.data)?.let { link.send(Msg.Img(img.id, img.ts, img.from, "image/jpeg", it)) }
     }
 
     private fun noteSent(what: String, bytes: Int) {

@@ -91,9 +91,15 @@ Si el móvil no está, la tablet y el Mac no se sincronizan entre ellos.
 | **Mac** | ✓ | ✓ |
 
 - No se sincroniza lo que los gestores de contraseñas marcan como sensible (Android y Mac).
-- Texto (hasta 32.000 caracteres) y **fotos**. Las fotos se reducen antes de enviarlas (lado largo de
-  1600 px, JPEG): unos 150-300 KB, que por Bluetooth LE tardan del orden de **10-30 segundos** (estimación;
-  depende de los dispositivos). Apple es más rápido porque usa una Wi-Fi directa entre dispositivos.
+- Texto (hasta 32.000 caracteres) y **fotos a calidad completa**. La foto viaja **directa de un
+  dispositivo a otro por la red que compartan** (la misma Wi-Fi, o uno conectado al hotspot del otro), sin
+  pasar por ningún servidor de internet: por Bluetooth solo va un aviso diminuto con la dirección, un
+  código de un solo uso y una clave. La foto va **cifrada** (AES-256-GCM) y se comprueba su huella
+  (SHA-256).
+- **Solo si no hay red en común** (o el router aísla a los dispositivos, como en algunas redes de
+  invitados), se reduce (lado largo de 1600 px, JPEG, unos 150-300 KB) y va por Bluetooth LE, que tarda
+  del orden de 10-30 segundos (estimación).
+- En el Mac, la primera vez macOS pregunta si permites a Pera usar la **red local**: hay que aceptar.
 - En Android, las fotos copiadas las detecta **Teclado**, o se envían con **Compartir → Pera**. Al llegar a
   otro Android se pegan como imagen normal. Archivos que no sean imágenes, no.
 - Gana lo más reciente (por hora de copia).
@@ -217,6 +223,11 @@ Características (todas cifradas):
 | Wi-Fi | `5e1e2505-…-36b2692ef8bb` | leer: `{"ssid":…, "pass":…, "sec":"wpa2"\|"wpa3"\|"open"}` |
 | Mensajes de entrada | `4af7edca-…-e555361dd8ee` | escribir fragmentos (cliente → móvil) |
 | Mensajes de salida | `f049b244-…-8c89ae98f59b` | notificar fragmentos (móvil → cliente) |
+
+Imágenes por la red local: quien la tiene abre un puerto TCP y envía por Bluetooth `imgref` (direcciones
+IPv4, puerto, código, clave AES-256 y SHA-256). El otro se conecta, envía `código\n` y recibe
+`[longitud u64][nonce 12][datos cifrados + etiqueta GCM]`. Si no puede, responde `imgreq` y recibe `img`
+(reducida) por Bluetooth.
 
 Fragmento: `[id u16][índice u16][total u16][datos]`. Mensajes JSON: `hello` (al conectar), `clip`
 (texto copiado: id, hora, origen, texto), `nets` (redes) y `here` (red actual del móvil). Una versión antigua ignora los tipos que no

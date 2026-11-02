@@ -14,6 +14,9 @@ import org.json.JSONObject
  *  - here:  la red a la que está conectado el móvil ahora mismo (o ninguna): los demás se unen a ella.
  *  - img:   última imagen copiada. Binario para no inflar con base64:
  *           [0x01][longitud de la cabecera u16][cabecera JSON {"t":"img","id","ts","from","mime"}][bytes].
+ *  - imgref: «tengo una imagen; descárgala por la red local» (ver LanShare): direcciones, puerto,
+ *           código de un solo uso, clave AES y huella SHA-256. Es lo normal: calidad completa y rápido.
+ *  - imgreq: «no he podido descargarla por la red»: el otro la manda reducida por Bluetooth (img).
  *  - pins:  textos fijados del teclado ({"ts", "items":[{"x": texto, "t": título}]}); gana el más reciente.
  */
 sealed class Msg {
@@ -28,6 +31,13 @@ sealed class Msg {
         override fun hashCode() = id.hashCode()
     }
 
+    data class ImgRef(
+        val id: String, val ts: Long, val from: String, val mime: String, val size: Long, val sha: String,
+        val key: String, val addrs: List<String>, val port: Int, val token: String,
+    ) : Msg()
+
+    data class ImgReq(val id: String) : Msg()
+
     data class Pin(val text: String, val title: String)
     data class Pins(val ts: Long, val items: List<Pin>) : Msg()
 
@@ -41,6 +51,10 @@ sealed class Msg {
         val o = JSONObject()
         when (this) {
             is Img -> Unit
+            is ImgRef -> o.put("t", "imgref").put("id", id).put("ts", ts).put("from", from).put("mime", mime)
+                .put("size", size).put("sha", sha).put("key", key).put("addrs", JSONArray(addrs)).put("port", port)
+                .put("token", token)
+            is ImgReq -> o.put("t", "imgreq").put("id", id)
             is Pins -> o.put("t", "pins").put("ts", ts).put(
                 "items", JSONArray().apply { items.forEach { put(JSONObject().put("x", it.text).put("t", it.title)) } },
             )
@@ -67,6 +81,15 @@ sealed class Msg {
                     Nets((0 until a.length()).mapNotNull { wifiFromJson(a.getJSONObject(it)) })
                 }
                 "here" -> Here(if (o.isNull("net")) null else wifiFromJson(o.getJSONObject("net")))
+                "imgref" -> {
+                    val a = o.getJSONArray("addrs")
+                    ImgRef(
+                        o.getString("id"), o.getLong("ts"), o.optString("from", "?"), o.optString("mime", "image/jpeg"),
+                        o.getLong("size"), o.getString("sha"), o.getString("key"),
+                        (0 until a.length()).map { a.getString(it) }, o.getInt("port"), o.getString("token"),
+                    )
+                }
+                "imgreq" -> ImgReq(o.getString("id"))
                 "pins" -> {
                     val a = o.getJSONArray("items")
                     Pins(o.getLong("ts"), (0 until a.length()).map { a.getJSONObject(it).let { p -> Pin(p.getString("x"), p.optString("t", "")) } })

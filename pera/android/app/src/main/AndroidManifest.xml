@@ -10,6 +10,8 @@
         android:usesPermissionFlags="neverForLocation" />
     <!-- Leer el estado del hotspot y, en la tablet, sugerir la red Wi-Fi del móvil. -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Fotos a calidad completa directas entre tus dispositivos por la red local (no por internet). -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- Enterarse de los cambios de Wi-Fi (registerNetworkCallback lo exige). -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />

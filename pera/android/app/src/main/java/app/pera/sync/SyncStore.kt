@@ -42,13 +42,15 @@ class SyncStore(context: Context) {
         get() {
             val id = prefs.getString("img_id", null) ?: return null
             val data = Images.load(app, id) ?: return null
-            return Msg.Img(id, prefs.getLong("img_ts", 0), prefs.getString("img_from", "?")!!, "image/jpeg", data)
+            return Msg.Img(id, prefs.getLong("img_ts", 0), prefs.getString("img_from", "?")!!,
+                prefs.getString("img_mime", "image/jpeg")!!, data)
         }
 
     @Synchronized
     fun setImage(img: Msg.Img) {
         Images.save(app, img)
-        prefs.edit().putString("img_id", img.id).putLong("img_ts", img.ts).putString("img_from", img.from).apply()
+        prefs.edit().putString("img_id", img.id).putLong("img_ts", img.ts).putString("img_from", img.from)
+            .putString("img_mime", img.mime).apply()
     }
 
     /** Marca de tiempo e id de lo último copiado (texto o imagen): gana siempre lo más reciente. */

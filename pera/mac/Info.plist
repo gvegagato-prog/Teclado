@@ -21,6 +21,8 @@
     <!-- Solo icono en la barra de menús, sin icono en el Dock. -->
     <key>LSUIElement</key>
     <true/>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Pera pasa las fotos copiadas a calidad completa directamente entre tus dispositivos por tu red Wi-Fi.</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>Pera usa Bluetooth para pedirle a tu móvil que encienda su hotspot.</string>
 </dict>

@@ -17,8 +17,9 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 
 /**
- * Imágenes copiadas. Bluetooth LE es lento (decenas de KB/s), así que antes de enviarlas se reducen:
- * lado largo de [MAX_SIDE] px y JPEG de calidad [QUALITY] (~150-300 KB una foto de móvil).
+ * Imágenes copiadas. Normalmente viajan tal cual (calidad completa) por la red local, ver LanShare.
+ * Solo si no hay red en común se reducen para Bluetooth LE, que es lento (decenas de KB/s): lado largo de
+ * [MAX_SIDE] px y JPEG de calidad [QUALITY] (~150-300 KB una foto de móvil).
  */
 object Images {
     const val MAX_SIDE = 1600
@@ -54,6 +55,17 @@ object Images {
         }
     }.getOrNull()
 
+    /** Tipo de imagen por sus primeros bytes (lo que se declara al pegar). */
+    fun sniff(b: ByteArray): String = when {
+        b.size >= 8 && b[0] == 0x89.toByte() && b[1] == 'P'.code.toByte() && b[2] == 'N'.code.toByte() -> "image/png"
+        b.size >= 3 && b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte() -> "image/jpeg"
+        b.size >= 6 && String(b, 0, 3) == "GIF" -> "image/gif"
+        b.size >= 12 && String(b, 0, 4) == "RIFF" && String(b, 8, 4) == "WEBP" -> "image/webp"
+        b.size >= 12 && String(b, 4, 4) == "ftyp" && String(b, 8, 4).let { it.startsWith("hei") || it.startsWith("mif") } -> "image/heic"
+        b.size >= 2 && b[0] == 'B'.code.toByte() && b[1] == 'M'.code.toByte() -> "image/bmp"
+        else -> "image/jpeg"
+    }
+
     fun hash(data: ByteArray): String =
         java.security.MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it) }.take(16)
 
@@ -69,7 +81,7 @@ object Images {
 
     fun uri(id: String): Uri = Uri.parse("content://${ClipProvider.AUTHORITY}/${fileName(id)}")
 
-    private fun fileName(id: String) = id.filter { it.isLetterOrDigit() || it == '-' } + ".jpg"
+    private fun fileName(id: String) = id.filter { it.isLetterOrDigit() || it == '-' } + ".img"
 
     internal fun file(context: Context, name: String): File? =
         File(dir(context), name).takeIf { it.exists() && it.parentFile == dir(context) }
@@ -82,7 +94,12 @@ object Images {
 class ClipProvider : ContentProvider() {
     override fun onCreate() = true
 
-    override fun getType(uri: Uri) = "image/jpeg"
+    override fun getType(uri: Uri): String {
+        val f = Images.file(context!!, uri.lastPathSegment ?: return "image/jpeg") ?: return "image/jpeg"
+        val head = ByteArray(16)
+        val n = f.inputStream().use { it.read(head) }
+        return Images.sniff(head.copyOf(maxOf(0, n)))
+    }
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor? {
         val f = Images.file(context!!, uri.lastPathSegment ?: return null) ?: return null
@@ -92,7 +109,7 @@ class ClipProvider : ContentProvider() {
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?): Cursor? {
         val f = Images.file(context!!, uri.lastPathSegment ?: return null) ?: return null
         return MatrixCursor(arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)).apply {
-            addRow(arrayOf<Any>("Pera.jpg", f.length()))
+            addRow(arrayOf<Any>("Pera", f.length()))
         }
     }
 

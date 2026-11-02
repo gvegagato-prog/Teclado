@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 @testable import Pera
 
@@ -47,7 +48,7 @@ final class SyncTests: XCTestCase {
     func testImageBinaryRoundTripAndLayout() {
         let data = Data((0..<300_000).map { UInt8(truncatingIfNeeded: $0 &* 7) })
         let img = Msg.Img(id: "i1", ts: 1_730_000_000_000, from: "Mac", mime: "image/jpeg", data: data)
-        let bytes = img.encode()
+        let bytes = Msg.img(img).encode()
         XCTAssertEqual(bytes.first, 1)
         let hdrLen = Int(bytes[1]) << 8 | Int(bytes[2])
         let hdr = String(data: bytes.subdata(in: 3 ..< 3 + hdrLen), encoding: .utf8) ?? ""
@@ -60,6 +61,26 @@ final class SyncTests: XCTestCase {
         for f in Framing.split(msgId: 3, data: bytes, maxFrame: 244) { out = a.add(f) ?? out }
         guard let whole = out, case let .img(viaFrames)? = Msg.decode(whole) else { return XCTFail() }
         XCTAssertEqual(viaFrames, img)
+    }
+
+    /// Mismo vector que LanShareTest.kt (Android): ambos descifran igual el formato nonce+datos+etiqueta.
+    func testDecryptsSharedVector() throws {
+        let key = SymmetricKey(data: Data(0..<32))
+        let hex = "000102030405060708090a0b1767a47ae588ad69e928f3eaa7e71f8441c7bee5f91480be5a4d96af"
+        let payload = Data(stride(from: 0, to: hex.count, by: 2).map {
+            UInt8(hex[hex.index(hex.startIndex, offsetBy: $0) ..< hex.index(hex.startIndex, offsetBy: $0 + 2)], radix: 16)!
+        })
+        let data = try AES.GCM.open(AES.GCM.SealedBox(combined: payload), using: key)
+        XCTAssertEqual(String(data: data, encoding: .utf8), "Pera mordida")
+    }
+
+    func testImgRefRoundTrip() {
+        let r = Msg.ImgRef(id: "a", ts: 5, from: "Mac", mime: "image/png", size: 10, sha: "ab", key: "a2V5",
+                           addrs: ["192.168.1.2", "10.0.0.3"], port: 51234, token: "cafe")
+        guard case let .imgref(back)? = Msg.decode(Msg.imgref(r).encode()) else { return XCTFail() }
+        XCTAssertEqual(back, r)
+        guard case let .imgreq(id)? = Msg.decode(Msg.imgreq("a").encode()) else { return XCTFail() }
+        XCTAssertEqual(id, "a")
     }
 
     /// JSON tal como lo escribe Android (org.json).

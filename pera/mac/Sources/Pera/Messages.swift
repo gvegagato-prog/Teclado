@@ -9,6 +9,23 @@ enum Msg {
     case here(PeraProtocol.Wifi?)
     /// Última imagen copiada (mensaje binario: [0x01][u16 cabecera][cabecera JSON][bytes]).
     case img(Img)
+    /// «Tengo una imagen; descárgala por la red local» (LanShare): lo normal, calidad completa.
+    case imgref(ImgRef)
+    /// «No he podido descargarla por la red»: mándala reducida por Bluetooth.
+    case imgreq(String)
+
+    struct ImgRef: Equatable {
+        let id: String
+        let ts: Int64
+        let from: String
+        let mime: String
+        let size: Int64
+        let sha: String
+        let key: String
+        let addrs: [String]
+        let port: Int
+        let token: String
+    }
 
     struct Img: Equatable {
         let id: String
@@ -47,6 +64,11 @@ enum Msg {
         switch self {
         case .img:
             return Data()
+        case let .imgref(r):
+            o = ["t": "imgref", "id": r.id, "ts": r.ts, "from": r.from, "mime": r.mime, "size": r.size, "sha": r.sha,
+                 "key": r.key, "addrs": r.addrs, "port": r.port, "token": r.token]
+        case let .imgreq(id):
+            o = ["t": "imgreq", "id": id]
         case let .hello(device, clipTs):
             o = ["t": "hello", "dev": device, "clip": clipTs]
         case let .clip(c):
@@ -101,6 +123,16 @@ enum Msg {
             return .nets(arr.compactMap(wifi))
         case "here":
             return .here((o["net"] as? [String: Any]).flatMap(wifi))
+        case "imgref":
+            guard let id = o["id"] as? String, let ts = (o["ts"] as? NSNumber)?.int64Value,
+                  let size = (o["size"] as? NSNumber)?.int64Value, let sha = o["sha"] as? String,
+                  let key = o["key"] as? String, let addrs = o["addrs"] as? [String],
+                  let port = (o["port"] as? NSNumber)?.intValue, let token = o["token"] as? String else { return nil }
+            return .imgref(ImgRef(id: id, ts: ts, from: o["from"] as? String ?? "?", mime: o["mime"] as? String ?? "image/jpeg",
+                                  size: size, sha: sha, key: key, addrs: addrs, port: port, token: token))
+        case "imgreq":
+            guard let id = o["id"] as? String else { return nil }
+            return .imgreq(id)
         default:
             return nil // de una versión futura de Pera
         }

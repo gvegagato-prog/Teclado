@@ -1,14 +1,22 @@
 # Pera
 
-Funciones al estilo Apple para tu móvil Android, tu tablet y tu Mac. La primera:
-**usar los datos del móvil desde la tablet o el Mac sin sacar el móvil del bolsillo**
-(como el «Compartir Internet instantáneo» del iPhone).
+Funciones al estilo Apple para tu móvil Android, tu tablet y tu Mac:
+
+1. **Datos del móvil sin sacarlo del bolsillo** (como el «Compartir Internet instantáneo» del iPhone).
+2. **Portapapeles compartido**: lo último que copias en un dispositivo se puede pegar en los demás
+   (como el «Portapapeles universal»).
+3. **Redes Wi-Fi compartidas**: la red a la que se une un dispositivo de la familia la conocen los demás
+   (como las contraseñas Wi-Fi de iCloud).
+
+Todo viaja por **Bluetooth LE cifrado** entre tus dispositivos emparejados. No hay servidores ni cuentas.
+
+## 1. Datos del móvil
 
 - **Mac**: icono de Pera en la barra de menús, junto al Wi-Fi → «Conectar a los datos del móvil».
 - **Tablet Android**: botón «Datos del móvil» en el panel de ajustes rápidos.
 - **Móvil**: Pera queda esperando por Bluetooth y, cuando se lo piden, enciende el hotspot.
 
-## Cómo funciona
+### Cómo funciona
 
 1. La tablet o el Mac buscan el móvil por **Bluetooth LE** (gasta muy poca batería).
 2. Le envían la orden «enciende el hotspot». Solo la aceptan dispositivos **emparejados**: la primera vez
@@ -16,7 +24,7 @@ Funciones al estilo Apple para tu móvil Android, tu tablet y tu Mac. La primera
 3. El móvil enciende el hotspot mediante **Shizuku** y devuelve el nombre y la contraseña de la red.
 4. La tablet o el Mac se unen a esa red.
 
-### ¿Por qué Shizuku?
+#### ¿Por qué Shizuku?
 
 Android no deja que una app normal encienda el hotspot: hace falta el permiso `TETHER_PRIVILEGED`, que
 solo tienen las apps del sistema. Shizuku da a Pera los permisos de ADB (los de un ordenador conectado
@@ -60,6 +68,44 @@ te conectes a una.
    de Bluetooth y el emparejamiento con el móvil.
 4. Activa **«Abrir al iniciar sesión»** en el mismo menú.
 
+## 2 y 3. Sincronización de la familia
+
+El **móvil es el centro**: la tablet y el Mac se mantienen conectados a él por Bluetooth LE (gasta poco y
+se reconectan solos cuando vuelves a estar cerca). Lo que llega de uno, el móvil lo reenvía a los demás.
+Si el móvil no está, la tablet y el Mac no se sincronizan entre ellos.
+
+### Portapapeles
+
+| Dispositivo | Detectar lo que copias | Recibir lo copiado en otro |
+|---|---|---|
+| Android con **Teclado** como teclado activo | ✓ (Teclado se lo pasa a Pera; Android 14+) | ✓ |
+| Android con **Shizuku** | ✓ (Android avisa «Shell ha pegado…»; se quita desactivando «Mostrar acceso al portapapeles» en los ajustes de privacidad) | ✓ |
+| Android sin ninguno | ✗: usa **Compartir → «Enviar a la familia Pera»** | ✓ |
+| **Mac** | ✓ | ✓ |
+
+- No se sincroniza lo que los gestores de contraseñas marcan como sensible (Android y Mac).
+- Solo texto, hasta 32.000 caracteres. Imágenes y archivos, no.
+- Gana lo más reciente (por hora de copia).
+
+### Redes Wi-Fi
+
+| Dispositivo | Compartir sus redes | Recibir las de la familia |
+|---|---|---|
+| Android con **Shizuku** | ✓ (lee las guardadas, con contraseña) | ✓ como redes guardadas normales |
+| Android sin Shizuku | ✗ (Android no deja leerlas) | ✓ como «redes sugeridas» (se conecta solo; la primera vez pide permiso) |
+| **Mac** | ✗ (macOS pide la contraseña del llavero por cada red) | ✓ menú «Añadir N redes de la familia…», con una contraseña de administrador |
+
+- Solo redes personales: WPA2, WPA3 o abiertas. Las de empresa (802.1X), WEP y ocultas no.
+- En el Mac, las WPA3 no se pueden añadir: `networksetup` no admite ese tipo. Elígelas a mano una vez.
+
+### Activarla
+
+- **Móvil**: nada más; viene con «Compartir los datos de este móvil». Interruptores «Sincronizar lo
+  copiado» y «Sincronizar redes Wi-Fi».
+- **Tablet**: activa **«Mantener esta tablet conectada al móvil»**. Para enviar lo que copias, usa
+  Teclado como teclado o instala también Shizuku.
+- **Mac**: viene activada; los interruptores están en el menú de Pera.
+
 ## Limitaciones (sin adornos)
 
 - **El icono no va dentro del desplegable Wi-Fi del Mac** ni del panel de Wi-Fi de Android: Apple y
@@ -74,6 +120,13 @@ te conectes a una.
 - **Ahorro de batería**: Samsung y ColorOS cierran apps en segundo plano. Si Pera deja de responder,
   revisa los pasos de batería de arriba.
 - **Solo Android 12+ y macOS 13+.** iPhone, Windows y Linux no están cubiertos.
+- **Portapapeles en macOS**: Apple está introduciendo un aviso cuando una app lee el portapapeles por su
+  cuenta. En macOS 26 está en vista previa y desactivado por defecto según los informes que he
+  encontrado; si en tu versión aparece, permite a Pera «Pegar siempre» en Privacidad y seguridad.
+- **Shizuku y redes/portapapeles**: los métodos internos del sistema que usa Pera los he comprobado en el
+  código fuente de Android (AOSP). Samsung y OPPO modifican partes del sistema y podrían cambiarlos.
+- **Teclado → Pera** necesita Android 14 o posterior (para que Pera sepa con certeza que la copia la
+  envía Teclado y no otra app).
 - La operadora puede bloquear el hotspot en algunas tarifas; Pera no puede saltárselo.
 
 ## Compilar
@@ -86,12 +139,18 @@ te conectes a una.
 
 ## Protocolo
 
-Servicio GATT `b49ae33f-05ff-43dc-832e-1e1cbc315a8c`, todas las características cifradas:
+Servicio GATT `b49ae33f-05ff-43dc-832e-1e1cbc315a8c`. La respuesta al escaneo lleva, como datos de ese
+servicio, 4 bytes que identifican al móvil: cada cliente se queda con el suyo. Características (todas
+cifradas):
 
 | Característica | UUID | Uso |
 |---|---|---|
 | Orden | `c28cdba2-…-d5caf1d9b653` | escribir 1 byte: `1` encender, `0` apagar |
 | Estado | `e46e38d3-…-d3a9740d2c89` | leer/notificar: 0 apagado, 1 encendiéndose, 2 encendido, 3 apagándose, 4 error, 5 sin Shizuku |
 | Wi-Fi | `5e1e2505-…-36b2692ef8bb` | leer: `{"ssid":…, "pass":…, "sec":"wpa2"\|"wpa3"\|"open"}` |
+| Mensajes de entrada | `4af7edca-…-e555361dd8ee` | escribir fragmentos (cliente → móvil) |
+| Mensajes de salida | `f049b244-…-8c89ae98f59b` | notificar fragmentos (móvil → cliente) |
 
-Las próximas funciones de Pera pueden añadir características a este mismo servicio.
+Fragmento: `[id u16][índice u16][total u16][datos]`. Mensajes JSON: `hello` (al conectar), `clip`
+(texto copiado: id, hora, origen, texto) y `nets` (redes). Una versión antigua ignora los tipos que no
+conoce, así que las próximas funciones de Pera pueden añadir mensajes nuevos sin romper nada.

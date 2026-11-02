@@ -40,6 +40,7 @@ import app.pera.sync.Framing
 import app.pera.sync.Msg
 import app.pera.sync.SyncBus
 import app.pera.sync.SyncHub
+import rikka.shizuku.Shizuku
 import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -98,15 +99,19 @@ class HostService : Service() {
             NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(),
             wifiCallback,
         )
-        hub.refreshOwnNetworks()
+        // Tras reiniciar, Shizuku suele arrancar después que Pera: entonces se leen las redes.
+        Shizuku.addBinderReceivedListenerSticky(shizukuReady)
         startBle()
     }
+
+    private val shizukuReady = Shizuku.OnBinderReceivedListener { hub.refreshOwnNetworks() }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
     override fun onDestroy() {
         if (SyncBus.onLocalClip != null) SyncBus.onLocalClip = null
         clipWatcher.end()
+        Shizuku.removeBinderReceivedListener(shizukuReady)
         runCatching { unregisterReceiver(receiver) }
         runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(wifiCallback) }
         stopBle()
@@ -210,6 +215,14 @@ class HostService : Service() {
             .onFailure { Log.e(TAG, "startAdvertising", it) }
     }
 
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+
+    private fun restartAdvertising() {
+        // En el hilo principal (no en el de órdenes, que puede estar esperando al hotspot).
+        main.post { runCatching { bluetooth.adapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback) } }
+        main.postDelayed({ if (server != null) startAdvertising() }, 300)
+    }
+
     @Synchronized
     private fun stopBle() {
         runCatching { bluetooth.adapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback) }
@@ -239,6 +252,9 @@ class HostService : Service() {
 
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
             if (newState == BluetoothProfile.STATE_DISCONNECTED) peers.remove(device.address)
+            // Al conectarse alguien, el chip deja de emitir el anuncio conectable: se reanuda para
+            // que los demás dispositivos de la familia sigan encontrando el móvil.
+            if (newState == BluetoothProfile.STATE_CONNECTED) restartAdvertising()
         }
 
         override fun onMtuChanged(device: BluetoothDevice, mtu: Int) {

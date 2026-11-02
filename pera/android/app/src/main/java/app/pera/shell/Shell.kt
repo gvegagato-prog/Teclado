@@ -61,13 +61,29 @@ object Shell {
 
     private fun wifi(): Any = asInterface("android.net.wifi.IWifiManager", binder("wifi"))
 
+    /** Último error al leer las redes (para el diagnóstico de la app). */
+    @Volatile var lastWifiError: String? = null
+        private set
+
     /** Redes Wi-Fi guardadas, con contraseña (solo las personales que se pueden sincronizar). */
-    fun savedNetworks(): List<Protocol.Wifi> = runCatching {
-        val slice = call(wifi(), "getPrivilegedConfiguredNetworks", shellAttributionExtras()) ?: return emptyList()
+    fun savedNetworks(): List<Protocol.Wifi> = savedConfigs().mapNotNull(::toWifi)
+
+    /** La red a la que está conectado este dispositivo ahora mismo, con su contraseña; null si no hay. */
+    fun currentNetwork(): Protocol.Wifi? = runCatching {
+        val info = call(wifi(), "getConnectionInfo") as android.net.wifi.WifiInfo? ?: return null
+        val id = info.networkId
+        if (id < 0) return null
+        savedConfigs().firstOrNull { it.networkId == id }?.let(::toWifi)
+    }.onFailure { lastWifiError = "red actual: ${it.javaClass.simpleName}: ${it.message}"; Log.w(TAG, "getConnectionInfo", it) }
+        .getOrNull()
+
+    private fun savedConfigs(): List<WifiConfiguration> = runCatching {
+        val slice = call(wifi(), "getPrivilegedConfiguredNetworks", shellAttributionExtras())
+            ?: error("Android devolvió una lista vacía")
         @Suppress("UNCHECKED_CAST")
-        val list = slice.javaClass.getMethod("getList").invoke(slice) as List<WifiConfiguration>
-        list.mapNotNull(::toWifi)
-    }.onFailure { Log.w(TAG, "getPrivilegedConfiguredNetworks", it) }.getOrDefault(emptyList())
+        (slice.javaClass.getMethod("getList").invoke(slice) as List<WifiConfiguration>).also { lastWifiError = null }
+    }.onFailure { lastWifiError = "redes guardadas: ${it.javaClass.simpleName}: ${it.message}"; Log.w(TAG, "getPrivilegedConfiguredNetworks", it) }
+        .getOrDefault(emptyList())
 
     /** Guarda una red como si la hubieras añadido en Ajustes. true si Android la aceptó. */
     fun addNetwork(w: Protocol.Wifi): Boolean = runCatching {
@@ -88,23 +104,48 @@ object Shell {
         id >= 0
     }.onFailure { Log.w(TAG, "addOrUpdateNetwork", it) }.getOrDefault(false)
 
-    @Suppress("DEPRECATION")
     private fun toWifi(c: WifiConfiguration): Protocol.Wifi? {
         val raw = c.SSID ?: return null
         if (!raw.startsWith("\"") || !raw.endsWith("\"") || raw.length < 3) return null // SSID en hexadecimal: se omite
         val ssid = raw.substring(1, raw.length - 1)
         if (c.hiddenSSID || c.isPasspoint) return null
-        val km = c.allowedKeyManagement
         val psk = c.preSharedKey
         val pass = if (psk != null && psk.length >= 2 && psk.startsWith("\"") && psk.endsWith("\"")) psk.substring(1, psk.length - 1) else null
-        val sec = when {
-            km.get(WifiConfiguration.KeyMgmt.WPA_EAP) || km.get(WifiConfiguration.KeyMgmt.IEEE8021X) -> return null
-            km.get(KEY_MGMT_SAE) && !km.get(WifiConfiguration.KeyMgmt.WPA_PSK) -> "wpa3"
-            km.get(WifiConfiguration.KeyMgmt.WPA_PSK) || km.get(KEY_MGMT_SAE) -> "wpa2"
-            c.wepKeys?.any { it != null } == true -> return null // WEP: obsoleto, no se sincroniza
+        val sec = securityOf(c) ?: return null
+        return when (sec) {
+            "open" -> Protocol.Wifi(ssid, null, "open")
+            else -> Protocol.Wifi(ssid, pass ?: return null, sec)
+        }
+    }
+
+    /**
+     * Tipo de seguridad. Desde Android 12 la fuente fiable es la lista de SecurityParams (los campos
+     * antiguos se derivan de ella); si no se puede leer, se usan los campos antiguos.
+     * null = no sincronizable (empresa, WEP, OWE…).
+     */
+    private fun securityOf(c: WifiConfiguration): String? {
+        val types = runCatching {
+            (c.javaClass.getMethod("getSecurityParamsList").invoke(c) as List<*>).mapNotNull { p ->
+                p?.javaClass?.getMethod("getSecurityType")?.invoke(p) as? Int
+            }
+        }.getOrDefault(emptyList())
+        if (types.isNotEmpty()) {
+            return when {
+                WifiConfiguration.SECURITY_TYPE_PSK in types -> "wpa2" // incluye WPA2/WPA3 de transición
+                WifiConfiguration.SECURITY_TYPE_SAE in types -> "wpa3"
+                WifiConfiguration.SECURITY_TYPE_OPEN in types -> "open"
+                else -> null
+            }
+        }
+        val km = c.allowedKeyManagement
+        return when {
+            km.get(WifiConfiguration.KeyMgmt.WPA_EAP) || km.get(WifiConfiguration.KeyMgmt.IEEE8021X) -> null
+            km.get(WifiConfiguration.KeyMgmt.WPA_PSK) -> "wpa2"
+            km.get(KEY_MGMT_SAE) -> "wpa3"
+            c.wepKeys?.any { it != null } == true -> null
+            c.preSharedKey != null -> "wpa2" // campos antiguos vacíos pero con contraseña
             else -> "open"
         }
-        return Protocol.Wifi(ssid, if (sec == "open") null else pass ?: return null, sec)
     }
 
     private const val KEY_MGMT_SAE = 8 // WifiConfiguration.KeyMgmt.SAE (oculto)

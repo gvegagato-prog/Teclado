@@ -52,6 +52,13 @@ enum WifiJoiner {
         s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
     }
 
+    /// ¿Tiene el Wi-Fi del Mac una dirección IP (es decir, está conectado a alguna red)?
+    static func hasWifiAddress() -> Bool {
+        guard let device = wifiDevice() else { return true } // sin Wi-Fi: no hay nada que hacer
+        let (status, out) = run("/usr/sbin/ipconfig", ["getifaddr", device])
+        return status == 0 && !out.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     /// Nombre del interfaz Wi-Fi (normalmente en0).
     static func wifiDevice() -> String? {
         let (_, out) = run("/usr/sbin/networksetup", ["-listallhardwareports"])

@@ -100,7 +100,8 @@ class HubLink(
             return
         }
         val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(Protocol.SERVICE)).build()
-        val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).build()
+        // Equilibrado: el de bajo consumo pierde anuncios cuando hay otros dispositivos Bluetooth activos.
+        val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_BALANCED).build()
         runCatching { scanner.startScan(listOf(filter), settings, scanCallback) }
             .onSuccess { scanning = true; onStatus("Buscando el móvil…") }
             .onFailure { handler.postDelayed({ scan() }, 30_000) }
@@ -114,7 +115,7 @@ class HubLink(
 
     private fun onFound(result: ScanResult) {
         if (!running || gatt != null) return
-        val id = result.scanRecord?.getServiceData(ParcelUuid(Protocol.SERVICE))
+        val id = Protocol.hubId(result.scanRecord)
         val mine = Prefs.pairedHubId(context)
         // Con identificador guardado, solo nuestro móvil; si aún no hay, el primero que se encuentre.
         if (mine != null && (id == null || !id.contentEquals(mine))) return
@@ -224,7 +225,7 @@ class HubLink(
             }
             msgIn = inC
             subscribeAttempts = 0
-            subscribe(g, outC)
+            bondThen(g) { subscribe(g, outC) }
         }
 
         override fun onDescriptorWrite(g: BluetoothGatt, d: BluetoothGattDescriptor, status: Int) {
@@ -286,6 +287,33 @@ class HubLink(
             @Suppress("DEPRECATION")
             onCharacteristicChanged(g, c, c.value ?: return)
         }
+    }
+
+    /**
+     * Empareja de forma explícita antes de la primera operación cifrada (más fiable que esperar a que
+     * Android lo haga solo): aparece el aviso de emparejar en los dos dispositivos.
+     */
+    private fun bondThen(g: BluetoothGatt, next: () -> Unit) {
+        val d = g.device
+        if (d.bondState == BluetoothDevice.BOND_BONDED) return next()
+        onStatus("Acepta el emparejamiento en los dos dispositivos")
+        if (d.bondState == BluetoothDevice.BOND_NONE) d.createBond()
+        var waited = 0
+        val check = object : Runnable {
+            override fun run() {
+                if (gatt !== g) return // se perdió la conexión mientras tanto
+                when {
+                    d.bondState == BluetoothDevice.BOND_BONDED -> next()
+                    waited >= 90 -> { onStatus("No se aceptó el emparejamiento"); g.disconnect() }
+                    else -> {
+                        if (d.bondState == BluetoothDevice.BOND_NONE && waited % 30 == 29) d.createBond()
+                        waited++
+                        handler.postDelayed(this, 1_000)
+                    }
+                }
+            }
+        }
+        handler.postDelayed(check, 1_000)
     }
 
     private fun subscribe(g: BluetoothGatt, c: BluetoothGattCharacteristic) {

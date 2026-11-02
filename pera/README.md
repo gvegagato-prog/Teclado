@@ -89,6 +89,19 @@ Si el móvil no está, la tablet y el Mac no se sincronizan entre ellos.
 
 ### Redes Wi-Fi
 
+**La Wi-Fi del móvil, en todos lados**: cuando el móvil se conecta a una Wi-Fi, se la pasa al momento a
+la tablet y al Mac, aunque no la conocieran:
+- **Tablet con Shizuku**: la guarda como una red normal y se conecta.
+- **Tablet sin Shizuku**: la añade como red sugerida (Android se conecta solo si no tiene otra Wi-Fi) y,
+  si en ese momento no tiene Wi-Fi, aparece un aviso «Conectar a «…», la Wi-Fi de tu móvil»: un toque y
+  queda guardada de verdad (pantalla del sistema de Android 11+, hasta 5 redes por vez).
+- **Mac**: si no está conectado a ninguna Wi-Fi, se une solo (lo reintenta cada minuto).
+
+Para esto el **móvil necesita Shizuku** (Android no deja a una app normal leer la contraseña de la red).
+En la app, la línea «Redes:» dice qué ha podido leer el móvil, o el error si algo falla.
+
+Además se sincronizan **todas** las redes guardadas:
+
 | Dispositivo | Compartir sus redes | Recibir las de la familia |
 |---|---|---|
 | Android con **Shizuku** | ✓ (lee las guardadas, con contraseña) | ✓ como redes guardadas normales |
@@ -170,9 +183,10 @@ de la anterior y hay que desinstalar (perdiendo los ajustes).
 
 ## Protocolo
 
-Servicio GATT `b49ae33f-05ff-43dc-832e-1e1cbc315a8c`. La respuesta al escaneo lleva, como datos de ese
-servicio, 4 bytes que identifican al móvil: cada cliente se queda con el suyo. Características (todas
-cifradas):
+Servicio GATT `b49ae33f-05ff-43dc-832e-1e1cbc315a8c`. El anuncio principal lleva, como datos de fabricante
+(0xFFFF), 4 bytes que identifican al móvil: cada cliente se queda con el suyo. (Pera 0.2-0.3 los ponía en la
+respuesta al escaneo, que en escaneos de bajo consumo puede no llegar; los clientes aún la aceptan.)
+Características (todas cifradas):
 
 | Característica | UUID | Uso |
 |---|---|---|
@@ -183,5 +197,5 @@ cifradas):
 | Mensajes de salida | `f049b244-…-8c89ae98f59b` | notificar fragmentos (móvil → cliente) |
 
 Fragmento: `[id u16][índice u16][total u16][datos]`. Mensajes JSON: `hello` (al conectar), `clip`
-(texto copiado: id, hora, origen, texto) y `nets` (redes). Una versión antigua ignora los tipos que no
+(texto copiado: id, hora, origen, texto), `nets` (redes) y `here` (red actual del móvil). Una versión antigua ignora los tipos que no
 conoce, así que las próximas funciones de Pera pueden añadir mensajes nuevos sin romper nada.

@@ -137,6 +137,12 @@ class HostService : Service() {
     private val wifiCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             hub.refreshOwnNetworks()
+            // La información de la conexión tarda un poco en estar completa: segunda lectura.
+            main.postDelayed({ hub.refreshOwnNetworks() }, 5_000)
+        }
+
+        override fun onLost(network: Network) {
+            hub.refreshOwnNetworks() // ya no hay red: los demás dejan de intentar unirse
         }
     }
 
@@ -199,21 +205,20 @@ class HostService : Service() {
     private fun startAdvertising() {
         val advertiser = bluetooth.adapter?.bluetoothLeAdvertiser ?: return
         val settings = AdvertiseSettings.Builder()
-            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER) // ~1 s: poca batería
+            // ~250 ms: se encuentra rápido aunque haya otros dispositivos Bluetooth activos.
+            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
             .setConnectable(true)
             .setTimeout(0)
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
             .build()
+        // 3 (flags) + 18 (UUID de 128 bits) + 8 (fabricante + id) = 29 de 31 bytes.
         val data = AdvertiseData.Builder()
             .addServiceUuid(ParcelUuid(Protocol.SERVICE))
+            .addManufacturerData(Protocol.MANUFACTURER_ID, Prefs.hubId(this))
             .setIncludeDeviceName(false)
+            .setIncludeTxPowerLevel(false)
             .build()
-        // El identificador del móvil va en la respuesta al escaneo (en el anuncio no cabe).
-        val scanResponse = AdvertiseData.Builder()
-            .addServiceData(ParcelUuid(Protocol.SERVICE), Prefs.hubId(this))
-            .setIncludeDeviceName(false)
-            .build()
-        runCatching { advertiser.startAdvertising(settings, data, scanResponse, advertiseCallback) }
+        runCatching { advertiser.startAdvertising(settings, data, advertiseCallback) }
             .onFailure { Log.e(TAG, "startAdvertising", it) }
     }
 

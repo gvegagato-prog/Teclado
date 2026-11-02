@@ -53,6 +53,12 @@
     <string name="sync_status">Estado: %1$s</string>
     <string name="sync_hub">este móvil es el centro de la familia</string>
     <string name="sync_off">desactivada en este dispositivo</string>
+    <string name="here_title">Conectar a «%1$s», la Wi-Fi de tu móvil</string>
+    <string name="here_text">Toca para guardarla en este dispositivo (se conectará solo a partir de ahora).</string>
+    <string name="save_nets">Guardar las redes Wi-Fi de la familia en este dispositivo</string>
+    <string name="save_nets_none">No hay redes de la familia que guardar todavía</string>
+    <string name="save_nets_unsupported">Este Android no tiene la pantalla para guardar redes</string>
+    <string name="wifi_diag">Redes: %1$s</string>
     <string name="forget_hub">Olvidar el móvil emparejado</string>
     <string name="forget_hub_done">Hecho: la próxima conexión buscará cualquier móvil con Pera.</string>
     <string name="share_label">Enviar a la familia Pera</string>

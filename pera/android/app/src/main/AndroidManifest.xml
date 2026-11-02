@@ -10,6 +10,8 @@
         android:usesPermissionFlags="neverForLocation" />
     <!-- Leer el estado del hotspot y, en la tablet, sugerir la red Wi-Fi del móvil. -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Enterarse de los cambios de Wi-Fi (registerNetworkCallback lo exige). -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <!-- Servicio permanente del móvil y arranque al encender. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -94,6 +96,12 @@
                 <action android:name="app.pera.action.CLIP" />
             </intent-filter>
         </receiver>
+
+        <activity
+            android:name=".client.SaveNetworksActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <activity
             android:name=".sync.ShareActivity"

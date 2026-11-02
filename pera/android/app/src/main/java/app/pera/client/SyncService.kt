@@ -92,8 +92,42 @@ class SyncService : Service() {
                     if (!store.applied(w) && WifiApplier.apply(this, w)) store.markApplied(w)
                 }
             }
+            is Msg.Here -> if (store.wifiEnabled) here(m.net)
             is Msg.Hello -> Unit
         }
+    }
+
+    /**
+     * El móvil está conectado a esta red: este dispositivo se une también, aunque no la tuviera.
+     * Con Shizuku queda guardada; sin él, como sugerida (Android se conecta solo si no tiene Wi-Fi) y,
+     * si ahora no hay Wi-Fi, un aviso permite guardarla de verdad con un toque.
+     */
+    private fun here(net: Protocol.Wifi?) {
+        store.here = net
+        if (net == null || !SyncRules.syncable(net)) return
+        val ok = WifiApplier.apply(this, net)
+        if (ok) store.markApplied(net)
+        if (!Shell.ready() && !store.saved(net) && !onWifi()) offerSave(net)
+    }
+
+    private fun onWifi(): Boolean {
+        val cm = getSystemService(android.net.ConnectivityManager::class.java)
+        return cm.getNetworkCapabilities(cm.activeNetwork)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
+    }
+
+    private fun offerSave(net: Protocol.Wifi) {
+        val open = PendingIntent.getActivity(
+            this, net.ssid.hashCode(), SaveNetworksActivity.intent(this, listOf(net)),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val n = Notification.Builder(this, Notifications.CHANNEL)
+            .setSmallIcon(R.drawable.ic_pera)
+            .setContentTitle(getString(R.string.here_title, net.ssid))
+            .setContentText(getString(R.string.here_text))
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        getSystemService(NotificationManager::class.java).notify(Notifications.HERE_ID, n)
     }
 
     /** El móvil avisa del estado real de su hotspot: el botón del panel lo refleja. */

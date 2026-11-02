@@ -11,11 +11,13 @@ import org.json.JSONObject
  *  - hello: lo manda un cliente al conectarse. «clip» = marca de tiempo del último texto que conoce.
  *  - clip:  último texto copiado en algún dispositivo.
  *  - nets:  redes Wi-Fi conocidas por la familia (nombre, contraseña, seguridad).
+ *  - here:  la red a la que está conectado el móvil ahora mismo (o ninguna): los demás se unen a ella.
  */
 sealed class Msg {
     data class Hello(val device: String, val clipTs: Long) : Msg()
     data class Clip(val id: String, val ts: Long, val from: String, val text: String) : Msg()
     data class Nets(val nets: List<Protocol.Wifi>) : Msg()
+    data class Here(val net: Protocol.Wifi?) : Msg()
 
     fun encode(): ByteArray {
         val o = JSONObject()
@@ -23,6 +25,7 @@ sealed class Msg {
             is Hello -> o.put("t", "hello").put("dev", device).put("clip", clipTs)
             is Clip -> o.put("t", "clip").put("id", id).put("ts", ts).put("from", from).put("text", text)
             is Nets -> o.put("t", "nets").put("nets", JSONArray().apply { nets.forEach { put(it.toJson()) } })
+            is Here -> o.put("t", "here").put("net", net?.toJson() ?: JSONObject.NULL)
         }
         return o.toString().toByteArray(Charsets.UTF_8)
     }
@@ -38,6 +41,7 @@ sealed class Msg {
                     val a = o.getJSONArray("nets")
                     Nets((0 until a.length()).mapNotNull { wifiFromJson(a.getJSONObject(it)) })
                 }
+                "here" -> Here(if (o.isNull("net")) null else wifiFromJson(o.getJSONObject("net")))
                 else -> null
             }
         }.getOrNull()

@@ -6,6 +6,10 @@ import Foundation
 final class FamilySync: ObservableObject {
     @Published var status = "Desactivada"
     @Published var pendingNets: [PeraProtocol.Wifi] = []
+    /// Red a la que está conectado el móvil ahora mismo.
+    @Published var phoneNet: PeraProtocol.Wifi?
+    private var lastJoinAttempt = Date.distantPast
+    private var joining = false
     @Published var clipEnabled: Bool { didSet { defaults.set(clipEnabled, forKey: "clipOn") } }
     @Published var wifiEnabled: Bool { didSet { defaults.set(wifiEnabled, forKey: "wifiOn") } }
 
@@ -32,6 +36,8 @@ final class FamilySync: ObservableObject {
     private func start() {
         link.start()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.checkPasteboard() }
+        // Si el Mac se queda sin Wi-Fi, vuelve a intentar unirse a la red del móvil.
+        Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in self?.joinPhoneNetIfOffline() }
     }
 
     /// Para volver a emparejar (p. ej. tras reinstalar Pera en el móvil, que cambia su identificador).
@@ -68,6 +74,10 @@ final class FamilySync: ObservableObject {
             pending.append(contentsOf: fresh)
             pendingNets = pending
             saveNets(pending, "pendingNets")
+        case let .here(w):
+            guard wifiEnabled else { return }
+            phoneNet = w
+            joinPhoneNetIfOffline()
         case .hello:
             break
         }
@@ -99,6 +109,21 @@ final class FamilySync: ObservableObject {
     }
 
     // MARK: - Redes Wi-Fi
+
+    /// Si el Mac no tiene Wi-Fi, se une a la red del móvil aunque no la conociera.
+    private func joinPhoneNetIfOffline() {
+        guard wifiEnabled, let w = phoneNet, !joining, Date().timeIntervalSince(lastJoinAttempt) > 50 else { return }
+        lastJoinAttempt = Date()
+        joining = true
+        DispatchQueue.global(qos: .utility).async {
+            let offline = !WifiJoiner.hasWifiAddress()
+            let joined = offline && WifiJoiner.join(w, attempts: 2)
+            DispatchQueue.main.async {
+                self.joining = false
+                if joined { self.status = "Conectado a «\(w.ssid)», la Wi-Fi del móvil" }
+            }
+        }
+    }
 
     /// Añade al Mac las redes pendientes (una sola petición de contraseña de administrador).
     func addPendingNetworks() {

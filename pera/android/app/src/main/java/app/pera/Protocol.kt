@@ -29,10 +29,18 @@ object Protocol {
     val MSG_OUT: UUID = UUID.fromString("f049b244-0074-4753-b89f-8c89ae98f59b")
 
     /**
-     * En la respuesta al escaneo, los datos de servicio de [SERVICE] llevan 4 bytes que identifican al
-     * móvil. Así cada cliente se queda con SU móvil y no intenta emparejarse con el de otra persona.
+     * El anuncio lleva, como datos de fabricante, 4 bytes que identifican al móvil. Así cada cliente
+     * se queda con SU móvil y no intenta emparejarse con el de otra persona. Va en el anuncio principal
+     * (no en la respuesta al escaneo, que en escaneos de bajo consumo puede no llegar).
+     * 0xFFFF es el identificador de fabricante reservado para usos internos / pruebas.
      */
     const val HUB_ID_BYTES = 4
+    const val MANUFACTURER_ID = 0xFFFF
+
+    /** Identificador del móvil en un resultado de escaneo (también el formato antiguo de Pera 0.2-0.3). */
+    fun hubId(record: android.bluetooth.le.ScanRecord?): ByteArray? =
+        record?.getManufacturerSpecificData(MANUFACTURER_ID)?.takeIf { it.size == HUB_ID_BYTES }
+            ?: record?.getServiceData(android.os.ParcelUuid(SERVICE))
 
     /** Descriptor estándar para activar notificaciones. */
     val CCCD: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")

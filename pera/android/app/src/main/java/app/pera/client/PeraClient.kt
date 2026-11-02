@@ -87,8 +87,13 @@ class PeraClient(private val context: Context, private val progress: (String) ->
         val wifi = service.getCharacteristic(Protocol.WIFI)
         if (cmd == null || state == null || wifi == null) throw Failure("Versión de Pera incompatible en el móvil")
 
-        // Primera operación cifrada: si no estáis emparejados, Android muestra el aviso de emparejar.
-        progress("Si aparece, acepta el emparejamiento en los dos dispositivos")
+        // Emparejar de forma explícita antes de la primera operación cifrada.
+        if (device.bondState != BluetoothDevice.BOND_BONDED) {
+            progress("Acepta el emparejamiento en los dos dispositivos")
+            if (device.bondState == BluetoothDevice.BOND_NONE) device.createBond()
+            waitBonded(device)
+            if (device.bondState != BluetoothDevice.BOND_BONDED) throw Failure("No se aceptó el emparejamiento")
+        }
         subscribe(g, state)
         // Emparejados y cifrados: a partir de ahora, este es nuestro móvil.
         foundHubId?.let { if (Prefs.pairedHubId(context) == null) Prefs.setPairedHubId(context, it) }
@@ -123,7 +128,7 @@ class PeraClient(private val context: Context, private val progress: (String) ->
         val mine = Prefs.pairedHubId(context)
         val cb = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
-                val id = result.scanRecord?.getServiceData(ParcelUuid(Protocol.SERVICE))
+                val id = Protocol.hubId(result.scanRecord)
                 // Con un móvil ya emparejado, se ignoran los de otras personas.
                 if (mine == null || (id != null && id.contentEquals(mine))) found.offer(result)
             }
@@ -133,7 +138,7 @@ class PeraClient(private val context: Context, private val progress: (String) ->
         scanner.startScan(listOf(filter), settings, cb)
         return try {
             found.poll(12, TimeUnit.SECONDS)?.also {
-                foundHubId = it.scanRecord?.getServiceData(ParcelUuid(Protocol.SERVICE))
+                foundHubId = Protocol.hubId(it.scanRecord)
             }?.device
         } finally {
             runCatching { scanner.stopScan(cb) }
@@ -159,7 +164,7 @@ class PeraClient(private val context: Context, private val progress: (String) ->
     }
 
     private fun waitBonded(device: BluetoothDevice) {
-        repeat(60) {
+        repeat(180) {
             if (device.bondState == BluetoothDevice.BOND_BONDED) return
             Thread.sleep(500)
         }

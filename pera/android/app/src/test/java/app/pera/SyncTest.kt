@@ -77,6 +77,8 @@ class SyncTest {
             Msg.Hello("Mac de Gon", 123L),
             Msg.Clip("abc", 1730000000000L, "Tablet", "Hola «mundo» ñ\n\"comillas\" 🍐"),
             Msg.Nets(listOf(Protocol.Wifi("Casa", "12345678", "wpa2"), Protocol.Wifi("Café", null, "open"))),
+            Msg.Here(Protocol.Wifi("Casa", "12345678", "wpa2")),
+            Msg.Here(null),
         )
         msgs.forEach { assertEquals(it, Msg.decode(it.encode())) }
     }

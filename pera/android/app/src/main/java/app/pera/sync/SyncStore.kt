@@ -43,10 +43,26 @@ class SyncStore(context: Context) {
         prefs.edit().putStringSet("applied", s).apply()
     }
 
-    /** Dirección Bluetooth del móvil (en clientes), para reconectar sin buscar. */
-    var hubAddress: String?
-        get() = prefs.getString("hub", null)
-        set(v) = prefs.edit().putString("hub", v).apply()
+    /** Redes guardadas de verdad en este dispositivo con la pantalla del sistema (no solo sugeridas). */
+    fun saved(w: Protocol.Wifi) = prefs.getStringSet("saved", emptySet())!!.contains(key(w))
+
+    @Synchronized
+    fun markSaved(w: Protocol.Wifi) {
+        val s = prefs.getStringSet("saved", emptySet())!!.toMutableSet()
+        s.removeAll { it.startsWith(w.ssid + "|") }
+        s += key(w)
+        prefs.edit().putStringSet("saved", s).apply()
+    }
+
+    /** Red a la que está conectado el móvil (en el móvil: la suya; en clientes: la última recibida). */
+    var here: Protocol.Wifi?
+        get() = prefs.getString("here", null)?.let { (Msg.decode(it.toByteArray()) as? Msg.Here)?.net }
+        set(v) = prefs.edit().putString("here", String(Msg.Here(v).encode())).apply()
+
+    /** Diagnóstico para la pantalla de la app (texto corto). */
+    var wifiDiag: String?
+        get() = prefs.getString("wifi_diag", null)
+        set(v) = prefs.edit().putString("wifi_diag", v).apply()
 
     private fun key(w: Protocol.Wifi) = "${w.ssid}|${w.pass}|${w.sec}"
 

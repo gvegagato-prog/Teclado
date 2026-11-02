@@ -16,16 +16,21 @@ enum PeraProtocol {
     /// Canal de mensajes móvil → Mac (notificación de fragmentos).
     static let msgOut = CBUUID(string: "f049b244-0074-4753-b89f-8c89ae98f59b")
 
-    /// ¿Es este anuncio el de nuestro móvil? (4 bytes en los datos de servicio de la respuesta al escaneo).
-    /// Sin identificador guardado se acepta el primero; tras emparejar, solo el nuestro.
+    /// ¿Es este anuncio el de nuestro móvil? Sin identificador guardado se acepta el primero; tras
+    /// emparejar, solo el nuestro.
     static func isOurHub(_ advertisementData: [String: Any]) -> Bool {
         guard let mine = UserDefaults.standard.data(forKey: "pairedHub") else { return true }
-        let data = advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data]
-        return data?[service] == mine
+        return hubId(advertisementData) == mine
     }
 
+    /// 4 bytes en los datos de fabricante del anuncio (0xFFFF, little endian: FF FF + id). Pera 0.2-0.3
+    /// los ponía en los datos de servicio de la respuesta al escaneo: también se aceptan.
     static func hubId(_ advertisementData: [String: Any]) -> Data? {
-        (advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data])?[service]
+        if let m = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data,
+           m.count == 2 + 4, m[m.startIndex] == 0xFF, m[m.startIndex + 1] == 0xFF {
+            return Data(m.dropFirst(2))
+        }
+        return (advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data])?[service]
     }
 
     static func rememberHub(_ id: Data?) {

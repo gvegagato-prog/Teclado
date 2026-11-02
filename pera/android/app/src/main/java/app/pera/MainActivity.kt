@@ -47,6 +47,8 @@ class MainActivity : Activity() {
     private lateinit var syncSwitch: Switch
     private lateinit var syncSource: TextView
     private lateinit var syncStatus: TextView
+    private lateinit var wifiDiag: TextView
+    private lateinit var saveNets: Button
     private lateinit var store: SyncStore
     private val io = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -157,6 +159,13 @@ class MainActivity : Activity() {
         root.addView(syncSource)
         syncStatus = text("")
         root.addView(syncStatus)
+        wifiDiag = text("")
+        root.addView(wifiDiag)
+        saveNets = button(getString(R.string.save_nets)) {
+            val pending = (store.nets + listOfNotNull(store.here)).distinctBy { it.ssid }.filter { !store.saved(it) }
+            startActivity(app.pera.client.SaveNetworksActivity.intent(this, pending))
+        }
+        root.addView(saveNets)
         root.addView(button(getString(R.string.forget_hub)) {
             Prefs.forgetPairedHub(this) // se aplica en la próxima búsqueda del móvil
             clientText.text = getString(R.string.forget_hub_done)
@@ -204,6 +213,16 @@ class MainActivity : Activity() {
         ClientService.lastMessage?.let { clientText.text = it }
 
         val host = Prefs.hostEnabled(this)
+        wifiDiag.text = getString(
+            R.string.wifi_diag,
+            if (host) {
+                store.wifiDiag ?: "aún sin leer"
+            } else {
+                "${store.nets.size} recibidas del móvil · red del móvil: ${store.here?.ssid ?: "ninguna"}"
+            },
+        )
+        // Sin Shizuku, la tablet solo puede guardarlas con la pantalla del sistema (un toque).
+        saveNets.visibility = if (!host && store.nets.isNotEmpty() && hotspot.shizukuStatus() != ShizukuState.READY) View.VISIBLE else View.GONE
         syncSwitch.isEnabled = !host // el móvil ya es el centro: no se conecta a sí mismo
         syncSource.text = getString(
             when {

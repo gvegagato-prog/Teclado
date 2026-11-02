@@ -31,6 +31,9 @@ struct MenuContent: View {
             .disabled(model.busy)
         Divider()
         Text("Familia Pera: \(family.status)")
+        if let net = family.phoneNet {
+            Text("Wi-Fi del móvil: \(net.ssid) (el Mac se une solo si se queda sin Wi-Fi)")
+        }
         Toggle("Sincronizar lo copiado", isOn: $family.clipEnabled)
         Toggle("Sincronizar redes Wi-Fi", isOn: $family.wifiEnabled)
         if !family.pendingNets.isEmpty {

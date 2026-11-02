@@ -35,6 +35,14 @@ final class SyncTests: XCTestCase {
         XCTAssertEqual(n, nets)
     }
 
+    func testHereRoundTripAndAndroidJson() {
+        let w = PeraProtocol.Wifi(ssid: "Casa", pass: "12345678", sec: "wpa2")
+        guard case let .here(n)? = Msg.decode(Msg.here(w).encode()) else { return XCTFail() }
+        XCTAssertEqual(n, w)
+        guard case let .here(none)? = Msg.decode(Data(#"{"t":"here","net":null}"#.utf8)) else { return XCTFail() }
+        XCTAssertNil(none)
+    }
+
     /// JSON tal como lo escribe Android (org.json).
     func testDecodesAndroidJson() {
         let json = #"{"t":"clip","id":"x1","ts":1730000000123,"from":"Galaxy","text":"línea\nnueva"}"#

@@ -50,9 +50,13 @@ sealed class Msg {
             .put("ssid", ssid)
             .put("pass", pass ?: JSONObject.NULL)
             .put("sec", sec)
+            .apply { if (hidden) put("hid", true) }
 
         private fun wifiFromJson(o: JSONObject): Protocol.Wifi? = runCatching {
-            Protocol.Wifi(o.getString("ssid"), if (o.isNull("pass")) null else o.getString("pass"), o.optString("sec", "wpa2"))
+            Protocol.Wifi(
+                o.getString("ssid"), if (o.isNull("pass")) null else o.getString("pass"),
+                o.optString("sec", "wpa2"), o.optBoolean("hid", false),
+            )
         }.getOrNull()
     }
 }

@@ -130,7 +130,8 @@ class SyncService : Service() {
                 val visible = Shell.visibleSsids()
                 if (Shell.currentSsid() == net.ssid) {
                     store.wifiDiag = "conectada a «${net.ssid}», la Wi-Fi del móvil ✓"
-                } else if (visible != null && net.ssid !in visible) {
+                } else if (!net.hidden && visible != null && net.ssid !in visible) {
+                    // (Las redes ocultas no salen por su nombre en el escaneo: con esas se intenta igual.)
                     // No está al alcance: no se toca la Wi-Fi actual (se reintenta en 30 s).
                     store.wifiDiag = "$time «${net.ssid}» no está al alcance de la tablet; se reintenta"
                 } else if (Shell.connectTo(net)) {

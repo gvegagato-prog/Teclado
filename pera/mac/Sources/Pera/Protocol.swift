@@ -64,5 +64,7 @@ enum PeraProtocol {
         let ssid: String
         let pass: String?
         let sec: String
+        /// Red oculta (no anuncia su nombre). Ausente en mensajes de Pera ≤ 0.7.
+        var hid: Bool? = nil
     }
 }

@@ -18,8 +18,8 @@ android {
         applicationId = "app.pera"
         minSdk = 31 // Android 12: permisos de Bluetooth modernos
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.7"
+        versionCode = 8
+        versionName = "0.8"
     }
 
     signingConfigs {

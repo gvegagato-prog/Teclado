@@ -39,12 +39,15 @@ enum Msg {
     }
 
     private static func json(_ w: PeraProtocol.Wifi) -> [String: Any] {
-        ["ssid": w.ssid, "pass": w.pass ?? NSNull(), "sec": w.sec]
+        var o: [String: Any] = ["ssid": w.ssid, "pass": w.pass ?? NSNull(), "sec": w.sec]
+        if w.hid == true { o["hid"] = true }
+        return o
     }
 
     private static func wifi(_ n: [String: Any]) -> PeraProtocol.Wifi? {
         guard let ssid = n["ssid"] as? String else { return nil }
-        return PeraProtocol.Wifi(ssid: ssid, pass: n["pass"] as? String, sec: n["sec"] as? String ?? "wpa2")
+        return PeraProtocol.Wifi(ssid: ssid, pass: n["pass"] as? String, sec: n["sec"] as? String ?? "wpa2",
+                                 hid: n["hid"] as? Bool)
     }
 
     static func decode(_ data: Data) -> Msg? {

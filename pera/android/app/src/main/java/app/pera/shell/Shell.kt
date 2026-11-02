@@ -88,10 +88,8 @@ object Shell {
             info == null -> "no se pudo leer la conexión"
             else -> "conexión censurada (id ${info.networkId}) y ninguna red marcada en uso"
         }
-        val wifi = config?.let(::toWifi)
-        if (config != null && wifi == null) {
-            currentHow = "la red ${config.SSID} no se puede compartir (oculta, de empresa, WEP o sin contraseña legible)"
-        }
+        val (wifi, why) = config?.let(::toWifiWhy) ?: (null to "")
+        if (config != null && wifi == null) currentHow = "la red ${config.SSID} no se puede compartir: $why"
         return wifi
     }
 
@@ -156,33 +154,44 @@ object Shell {
     private fun addNetworkId(w: Protocol.Wifi): Int = runCatching {
         val c = WifiConfiguration()
         c.SSID = "\"${w.ssid}\""
+        c.hiddenSSID = w.hidden
+        // Contraseña entre comillas; la clave cruda de 64 hex va sin comillas (formato de Android).
+        val key = if (w.rawPsk) w.pass else "\"${w.pass}\""
         when (w.sec) {
             "open" -> c.setSecurityParams(WifiConfiguration.SECURITY_TYPE_OPEN)
             "wpa3" -> {
                 c.setSecurityParams(WifiConfiguration.SECURITY_TYPE_SAE)
-                c.preSharedKey = "\"${w.pass}\""
+                c.preSharedKey = key
             }
             else -> {
                 c.setSecurityParams(WifiConfiguration.SECURITY_TYPE_PSK)
-                c.preSharedKey = "\"${w.pass}\""
+                c.preSharedKey = key
             }
         }
         (call(wifi(), "addOrUpdateNetwork", c, Bundle()) as Int).also { lastAddError = null }
     }.onFailure { lastAddError = "${it.javaClass.simpleName}: ${it.message}"; Log.w(TAG, "addOrUpdateNetwork", it) }
         .getOrDefault(-1)
 
-    private fun toWifi(c: WifiConfiguration): Protocol.Wifi? {
-        val raw = c.SSID ?: return null
-        if (!raw.startsWith("\"") || !raw.endsWith("\"") || raw.length < 3) return null // SSID en hexadecimal: se omite
+    private fun toWifi(c: WifiConfiguration): Protocol.Wifi? = toWifiWhy(c).first
+
+    /** La red convertida, o null y el motivo (para el diagnóstico). */
+    internal fun toWifiWhy(c: WifiConfiguration): Pair<Protocol.Wifi?, String> {
+        val raw = c.SSID ?: return null to "sin nombre"
+        if (!raw.startsWith("\"") || !raw.endsWith("\"") || raw.length < 3) return null to "nombre en hexadecimal"
         val ssid = raw.substring(1, raw.length - 1)
-        if (c.hiddenSSID || c.isPasspoint) return null
+        if (c.isPasspoint) return null to "es Passpoint (red de operador)"
         val psk = c.preSharedKey
-        val pass = if (psk != null && psk.length >= 2 && psk.startsWith("\"") && psk.endsWith("\"")) psk.substring(1, psk.length - 1) else null
-        val sec = securityOf(c) ?: return null
-        return when (sec) {
-            "open" -> Protocol.Wifi(ssid, null, "open")
-            else -> Protocol.Wifi(ssid, pass ?: return null, sec)
+        val pass = when {
+            psk == null || psk == "*" -> null
+            psk.length >= 2 && psk.startsWith("\"") && psk.endsWith("\"") -> psk.substring(1, psk.length - 1)
+            psk.length == 64 && psk.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' } -> psk // clave cruda (QR, WPS…)
+            else -> null
         }
+        val sec = securityOf(c, pass != null) ?: return null to "seguridad de empresa, WEP u OWE"
+        if (sec != "open" && pass == null) {
+            return null to if (psk == "*") "Android no da la contraseña (sale como *)" else "contraseña no legible"
+        }
+        return Protocol.Wifi(ssid, if (sec == "open") null else pass, sec, c.hiddenSSID) to "ok"
     }
 
     /**
@@ -190,7 +199,7 @@ object Shell {
      * antiguos se derivan de ella); si no se puede leer, se usan los campos antiguos.
      * null = no sincronizable (empresa, WEP, OWE…).
      */
-    private fun securityOf(c: WifiConfiguration): String? {
+    private fun securityOf(c: WifiConfiguration, hasPassword: Boolean): String? {
         val types = runCatching {
             (c.javaClass.getMethod("getSecurityParamsList").invoke(c) as List<*>).mapNotNull { p ->
                 p?.javaClass?.getMethod("getSecurityType")?.invoke(p) as? Int
@@ -201,6 +210,8 @@ object Shell {
                 WifiConfiguration.SECURITY_TYPE_PSK in types -> "wpa2" // incluye WPA2/WPA3 de transición
                 WifiConfiguration.SECURITY_TYPE_SAE in types -> "wpa3"
                 WifiConfiguration.SECURITY_TYPE_OPEN in types -> "open"
+                // Otros (p. ej. Easy Connect/DPP) pero con contraseña: se comparte como WPA2.
+                hasPassword && WifiConfiguration.SECURITY_TYPE_EAP !in types -> "wpa2"
                 else -> null
             }
         }

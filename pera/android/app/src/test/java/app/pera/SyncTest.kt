@@ -84,6 +84,19 @@ class SyncTest {
     }
 
     @Test
+    fun hiddenAndRawPskNetworksRoundTrip() {
+        val raw = "0123456789abcdef".repeat(4)
+        val w = Protocol.Wifi("VODAFONE-F038", raw, "wpa2", hidden = true)
+        assertTrue(w.rawPsk)
+        assertFalse(Protocol.Wifi("Casa", "12345678", "wpa2").rawPsk)
+        assertEquals(Msg.Here(w), Msg.decode(Msg.Here(w).encode()))
+        assertEquals(w, Protocol.Wifi.decode(w.encode()))
+        // Un mensaje de una versión anterior (sin «hid») se entiende como red visible.
+        val old = Msg.decode("""{"t":"here","net":{"ssid":"Casa","pass":"12345678","sec":"wpa2"}}""".toByteArray())
+        assertEquals(Msg.Here(Protocol.Wifi("Casa", "12345678", "wpa2", hidden = false)), old)
+    }
+
+    @Test
     fun unknownMessagesAreIgnored() {
         assertNull(Msg.decode("""{"t":"futuro","x":1}""".toByteArray()))
         assertNull(Msg.decode("basura".toByteArray()))

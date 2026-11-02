@@ -66,11 +66,19 @@ object Protocol {
         else -> "desconocido ($state)"
     }
 
-    data class Wifi(val ssid: String, val pass: String?, val sec: String) {
+    /**
+     * Red Wi-Fi. [pass] es la contraseña o, si la red se guardó así (QR, WPS…), la clave cruda de 64
+     * caracteres hexadecimales. [hidden]: red oculta (no anuncia su nombre).
+     */
+    data class Wifi(val ssid: String, val pass: String?, val sec: String, val hidden: Boolean = false) {
+        /** La contraseña es una clave cruda (64 hex), no una frase. */
+        val rawPsk: Boolean get() = pass != null && pass.length == 64 && pass.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }
+
         fun encode(): ByteArray = JSONObject()
             .put("ssid", ssid)
             .put("pass", pass ?: JSONObject.NULL)
             .put("sec", sec)
+            .apply { if (hidden) put("hid", true) }
             .toString().toByteArray(Charsets.UTF_8)
 
         companion object {
@@ -80,6 +88,7 @@ object Protocol {
                     ssid = o.getString("ssid"),
                     pass = if (o.isNull("pass")) null else o.getString("pass"),
                     sec = o.optString("sec", "wpa2"),
+                    hidden = o.optBoolean("hid", false),
                 )
             }.getOrNull()
         }

@@ -27,9 +27,12 @@ object WifiApplier {
     @Synchronized
     fun suggest(context: Context, w: Protocol.Wifi): String? {
         val b = WifiNetworkSuggestion.Builder().setSsid(w.ssid).setIsAppInteractionRequired(false)
+            .setIsHiddenSsid(w.hidden)
         when {
             w.sec == "open" -> Unit
             w.pass == null -> return "falta la contraseña de «${w.ssid}»"
+            // Las redes sugeridas solo aceptan contraseña (8-63 caracteres), no la clave cruda.
+            w.rawPsk -> return "«${w.ssid}» está guardada con clave cruda: hace falta Shizuku en este dispositivo"
             w.sec == "wpa3" -> b.setWpa3Passphrase(w.pass)
             else -> b.setWpa2Passphrase(w.pass)
         }

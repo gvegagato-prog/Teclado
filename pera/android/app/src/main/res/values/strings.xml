@@ -15,7 +15,7 @@
     <string name="shizuku_download">Descargar Shizuku</string>
     <string name="shizuku_not_running">Shizuku: instalado pero no en marcha. Ábrelo y arráncalo (activa «Iniciar al arrancar»).</string>
     <string name="shizuku_open">Abrir Shizuku</string>
-    <string name="shizuku_no_permission">Shizuku: en marcha, falta dar permiso a Pera.</string>
+    <string name="shizuku_no_permission">Shizuku: en marcha, falta dar permiso a Pera (hace falta en el móvil y en la tablet).</string>
     <string name="shizuku_grant">Dar permiso a Pera</string>
     <string name="shizuku_ready">Shizuku: listo ✓</string>
     <string name="hotspot_state">Hotspot: %1$s</string>

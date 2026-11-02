@@ -100,9 +100,33 @@ object Shell {
      */
     fun connectTo(w: Protocol.Wifi): Boolean = runCatching {
         val id = addNetworkId(w)
-        if (id < 0) return false
-        call(wifi(), "enableNetwork", IntArg(id), BoolArg(true)) as Boolean
-    }.onFailure { Log.w(TAG, "enableNetwork", it) }.getOrDefault(false)
+        if (id < 0) {
+            lastConnectError = "Android no aceptó guardar «${w.ssid}»" + (lastAddError?.let { ": $it" } ?: "")
+            return false
+        }
+        val ok = call(wifi(), "enableNetwork", IntArg(id), BoolArg(true)) as Boolean
+        lastConnectError = if (ok) null else "Android rechazó conectar a «${w.ssid}»"
+        ok
+    }.onFailure { lastConnectError = "conectar: ${it.javaClass.simpleName}: ${it.message}"; Log.w(TAG, "enableNetwork", it) }
+        .getOrDefault(false)
+
+    /**
+     * Nombres de las redes que ve ahora este dispositivo (último escaneo del sistema), o null si no se
+     * pudo leer. Android 12-15 devuelve una lista; Android 16 un ParceledListSlice (verificado en AOSP).
+     */
+    fun visibleSsids(): Set<String>? = runCatching {
+        val r = call(wifi(), "getScanResults") ?: return null
+        @Suppress("UNCHECKED_CAST")
+        val list = (if (r is List<*>) r else r.javaClass.getMethod("getList").invoke(r) as List<*>)
+            .filterIsInstance<android.net.wifi.ScanResult>()
+        @Suppress("DEPRECATION")
+        list.mapNotNull { it.SSID?.takeIf(String::isNotEmpty) }.toSet()
+    }.onFailure { Log.w(TAG, "getScanResults", it) }.getOrNull()
+
+    /** Motivo del último fallo al conectar (diagnóstico). */
+    @Volatile var lastConnectError: String? = null
+        private set
+    @Volatile private var lastAddError: String? = null
 
     /** Guarda una red como si la hubieras añadido en Ajustes. true si Android la aceptó. */
     fun addNetwork(w: Protocol.Wifi): Boolean = addNetworkId(w) >= 0
@@ -121,8 +145,9 @@ object Shell {
                 c.preSharedKey = "\"${w.pass}\""
             }
         }
-        call(wifi(), "addOrUpdateNetwork", c, Bundle()) as Int
-    }.onFailure { Log.w(TAG, "addOrUpdateNetwork", it) }.getOrDefault(-1)
+        (call(wifi(), "addOrUpdateNetwork", c, Bundle()) as Int).also { lastAddError = null }
+    }.onFailure { lastAddError = "${it.javaClass.simpleName}: ${it.message}"; Log.w(TAG, "addOrUpdateNetwork", it) }
+        .getOrDefault(-1)
 
     private fun toWifi(c: WifiConfiguration): Protocol.Wifi? {
         val raw = c.SSID ?: return null

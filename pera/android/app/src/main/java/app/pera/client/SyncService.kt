@@ -55,6 +55,8 @@ class SyncService : Service() {
         )
         SyncBus.onLocalClip = { text -> worker.execute { localClip(text) } }
         clipWatcher = ClipWatcher(this).also { it.begin() }
+        rikka.shizuku.Shizuku.addBinderReceivedListenerSticky(shizukuReady)
+        main.postDelayed(retry, 30_000)
         link.start()
     }
 
@@ -62,6 +64,8 @@ class SyncService : Service() {
 
     override fun onDestroy() {
         if (instance === this) instance = null
+        main.removeCallbacks(retry)
+        rikka.shizuku.Shizuku.removeBinderReceivedListener(shizukuReady)
         SyncBus.onLocalClip = null
         clipWatcher.end()
         link.stop()
@@ -108,13 +112,51 @@ class SyncService : Service() {
      */
     private fun here(net: Protocol.Wifi?) {
         store.here = net
-        if (net == null || !SyncRules.syncable(net)) return
-        if (Shell.ready()) {
-            if (Shell.currentSsid() != net.ssid && Shell.connectTo(net)) store.markApplied(net)
-        } else if (WifiApplier.suggest(this, net) == null) {
-            store.markApplied(net)
+        joinPhoneNetwork()
+    }
+
+    /**
+     * Intenta estar en la misma Wi-Fi que el móvil. Se llama al recibir su red, cada 30 s (por si
+     * no estaba al alcance o Shizuku aún no había arrancado) y cuando Shizuku queda listo.
+     */
+    private fun joinPhoneNetwork() {
+        if (!store.wifiEnabled) return
+        val net = store.here
+        val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.ROOT).format(java.util.Date())
+        when {
+            net == null -> store.wifiDiag = "el móvil no está conectado a ninguna Wi-Fi (o no ha podido leerla)"
+            !SyncRules.syncable(net) -> store.wifiDiag = "la red del móvil «${net.ssid}» no se puede compartir (tipo ${net.sec})"
+            Shell.ready() -> {
+                val visible = Shell.visibleSsids()
+                if (Shell.currentSsid() == net.ssid) {
+                    store.wifiDiag = "conectada a «${net.ssid}», la Wi-Fi del móvil ✓"
+                } else if (visible != null && net.ssid !in visible) {
+                    // No está al alcance: no se toca la Wi-Fi actual (se reintenta en 30 s).
+                    store.wifiDiag = "$time «${net.ssid}» no está al alcance de la tablet; se reintenta"
+                } else if (Shell.connectTo(net)) {
+                    store.markApplied(net)
+                    store.wifiDiag = "$time conectando a «${net.ssid}»…"
+                } else {
+                    store.wifiDiag = "$time no se pudo conectar a «${net.ssid}»: ${Shell.lastConnectError ?: "sin detalle"}"
+                }
+            }
+            else -> {
+                val err = WifiApplier.suggest(this, net)
+                if (err == null) store.markApplied(net)
+                store.wifiDiag = "sin Shizuku listo en esta tablet: «${net.ssid}» queda como red sugerida" +
+                    (err?.let { " (error: $it)" } ?: "") + ". Para conectar sola, da permiso a Pera en Shizuku."
+            }
         }
     }
+
+    private val retry = object : Runnable {
+        override fun run() {
+            worker.execute { joinPhoneNetwork() }
+            main.postDelayed(this, 30_000)
+        }
+    }
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    private val shizukuReady = rikka.shizuku.Shizuku.OnBinderReceivedListener { worker.execute { joinPhoneNetwork() } }
 
     /** El móvil avisa del estado real de su hotspot: el botón del panel lo refleja. */
     private fun hotspotState(s: Int) {

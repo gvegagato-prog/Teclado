@@ -101,6 +101,11 @@ class MainActivity : Activity() {
         }
         root.addView(title("Pera", 28f))
         root.addView(text(getString(R.string.intro)))
+        // Shizuku hace falta en el móvil (hotspot, leer redes) y en la tablet (conectarse sola a la Wi-Fi).
+        shizukuText = text("")
+        root.addView(shizukuText)
+        shizukuButton = button("") {}
+        root.addView(shizukuButton)
 
         // --- Móvil ---
         root.addView(title(getString(R.string.host_title), 20f))
@@ -111,10 +116,6 @@ class MainActivity : Activity() {
             setOnCheckedChangeListener { _, on -> onHostSwitch(on) }
         }
         root.addView(hostSwitch)
-        shizukuText = text("")
-        root.addView(shizukuText)
-        shizukuButton = button("") {}
-        root.addView(shizukuButton)
         hotspotText = text("")
         root.addView(hotspotText)
         root.addView(row(
@@ -221,7 +222,7 @@ class MainActivity : Activity() {
             if (host) {
                 store.wifiDiag ?: "aún sin leer"
             } else {
-                "${store.nets.size} recibidas del móvil · red del móvil: ${store.here?.ssid ?: "ninguna"}"
+                (store.wifiDiag ?: "esperando la red del móvil") + " · ${store.nets.size} redes recibidas"
             },
         )
         clipDiag.text = getString(R.string.clip_diag, store.clipDiag.joinToString("\n").ifEmpty { "sin movimientos todavía" })

@@ -26,6 +26,7 @@
             android:name=".ImageProvider"
             android:authorities="app.teclado.pera"
             android:exported="true"
+            android:grantUriPermissions="true"
             android:readPermission="app.pera.permission.SEND_CLIP" />
 
         <!-- Fijadas que llegan de los demás teclados de la familia Pera, a través de Pera. -->

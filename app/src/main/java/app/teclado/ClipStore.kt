@@ -26,6 +26,10 @@ class ClipStore(private val file: File?, val max: Int = 50, val maxPinned: Int =
     var pinsTs = 0L
         private set
 
+    /** Si ya se ha hecho la primera sincronización con la familia (antes, al recibir se combinan). */
+    var pinsSynced = false
+        private set
+
     private val io by lazy { Executors.newSingleThreadExecutor { r -> Thread(r, "teclado-clip").apply { isDaemon = true } } }
 
     /** Recarga desde disco. Acepta también el formato anterior (una lista simple de textos). */
@@ -33,6 +37,7 @@ class ClipStore(private val file: File?, val max: Int = 50, val maxPinned: Int =
         list.clear()
         pins.clear()
         pinsTs = 0
+        pinsSynced = false
         val f = file ?: return
         try {
             if (!f.exists()) return
@@ -44,6 +49,7 @@ class ClipStore(private val file: File?, val max: Int = 50, val maxPinned: Int =
                 val o = JSONObject(raw)
                 o.optJSONArray("history")?.let { a -> for (i in 0 until minOf(a.length(), max)) list.add(a.getString(i)) }
                 pinsTs = o.optLong("pinnedTs", 0)
+                pinsSynced = o.optBoolean("pinnedSynced", false)
                 o.optJSONArray("pinned")?.let { a ->
                     for (i in 0 until minOf(a.length(), maxPinned)) {
                         val p = a.getJSONObject(i)
@@ -113,25 +119,38 @@ class ClipStore(private val file: File?, val max: Int = 50, val maxPinned: Int =
     }
 
     /**
-     * Fijadas que llegan de otro teclado de la familia. Solo se aplican si son más recientes. Si este
-     * teclado nunca las había sincronizado (pinsTs = 0) y tiene fijadas, se combinan en vez de
-     * sustituirlas, y la combinación pasa a ser la más reciente (para repartirla).
+     * Para enviar las fijadas que ya había (de antes de sincronizar): si nunca se editaron, se les pone
+     * fecha ahora para que los demás teclados las acepten. Devuelve true si hay algo que enviar.
+     */
+    fun stampPinsForSync(): Boolean {
+        if (pins.isEmpty() && pinsTs == 0L) return false
+        if (pinsTs == 0L) {
+            touchPins()
+            save()
+        }
+        return true
+    }
+
+    /**
+     * Fijadas que llegan de otro teclado de la familia.
+     *  - La primera vez (este teclado aún no había sincronizado) se COMBINAN con las propias, para no
+     *    perder ninguna; la unión pasa a ser la más reciente y hay que repartirla (devuelve true y
+     *    pinsTs queda distinto de [ts]).
+     *  - Después, gana la lista editada más recientemente.
      * Devuelve true si cambió algo.
      */
     fun replacePinned(remote: List<Pinned>, ts: Long): Boolean {
-        if (ts <= pinsTs) return false
-        val merged = if (pinsTs == 0L && pins.isNotEmpty()) {
-            remote + pins.filter { p -> remote.none { it.text == p.text } }
-        } else {
-            remote
-        }
-        val first = pinsTs == 0L && pins.isNotEmpty()
+        val first = !pinsSynced
+        if (!first && ts <= pinsTs) return false
+        val merged = if (first) remote + pins.filter { p -> remote.none { it.text == p.text } } else remote
+        val before = pins.map { it.text to it.title }
         pins.clear()
         merged.distinctBy { it.text }.take(maxPinned).forEach { pins.add(Pinned(it.text, it.title.take(MAX_TITLE))) }
         list.removeAll { t -> pins.any { it.text == t } }
-        pinsTs = if (first) maxOf(System.currentTimeMillis(), ts + 1) else ts
+        pinsSynced = true
+        pinsTs = if (first) maxOf(System.currentTimeMillis(), ts + 1, pinsTs + 1) else ts
         save()
-        return true
+        return first || before != pins.map { it.text to it.title }
     }
 
     private fun save() {
@@ -140,6 +159,7 @@ class ClipStore(private val file: File?, val max: Int = 50, val maxPinned: Int =
         o.put("history", JSONArray(list))
         o.put("pinned", JSONArray().also { a -> pins.forEach { a.put(JSONObject().put("x", it.text).put("t", it.title)) } })
         o.put("pinnedTs", pinsTs)
+        o.put("pinnedSynced", pinsSynced)
         val json = o.toString()
         io.execute {
             try {

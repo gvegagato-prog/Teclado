@@ -114,6 +114,16 @@ class SyncStore(context: Context) {
         prefs.edit().putString("clip_diag", lines.joinToString("\n")).apply()
     }
 
+    /** Últimos movimientos de los fijados (diagnóstico en la app). */
+    val pinsDiag: List<String>
+        get() = prefs.getString("pins_diag", "")!!.split("\n").filter { it.isNotBlank() }
+
+    @Synchronized
+    fun notePins(event: String) {
+        val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.ROOT).format(java.util.Date())
+        prefs.edit().putString("pins_diag", (listOf("$time $event") + pinsDiag).take(4).joinToString("\n")).apply()
+    }
+
     private fun key(w: Protocol.Wifi) = "${w.ssid}|${w.pass}|${w.sec}"
 
     companion object {

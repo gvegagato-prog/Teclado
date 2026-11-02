@@ -56,9 +56,12 @@ object SyncBus {
     /** Fijados del teclado de este dispositivo, editados aquí. */
     fun localPins(context: Context, pins: Msg.Pins) {
         val store = SyncStore(context)
-        if (!store.pinsEnabled || !SyncRules.acceptPins(store.pins, pins)) return
+        if (!store.pinsEnabled) return
+        if (!SyncRules.acceptPins(store.pins, pins)) return store.notePins("de Teclado: ${pins.items.size} (ya los tenía)")
         store.pins = pins
-        onLocalMsg?.invoke(pins)
+        val handler = onLocalMsg
+        store.notePins("de Teclado: ${pins.items.size}" + if (handler == null) "; se enviarán al conectar" else "; enviados a la familia")
+        handler?.invoke(pins)
     }
 
     /** Pone la imagen en el portapapeles: al pegar, la app lee el archivo a través de ClipProvider. */
@@ -76,6 +79,8 @@ object SyncBus {
             .putExtra("pins", String(pins.encode()))
             .addFlags(android.content.Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
         runCatching { context.sendBroadcast(intent, "app.pera.permission.SEND_CLIP") }
+            .onSuccess { SyncStore(context).notePins("${pins.items.size} entregados a Teclado") }
+            .onFailure { SyncStore(context).notePins("no se pudieron entregar a Teclado: ${it.javaClass.simpleName}") }
     }
 
     fun tecladoIsKeyboard(context: Context): Boolean =

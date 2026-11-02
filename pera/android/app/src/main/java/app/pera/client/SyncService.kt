@@ -113,6 +113,7 @@ class SyncService : Service() {
                 SyncBus.applyImage(this, m)
             }
             is Msg.Pins -> if (store.pinsEnabled && SyncRules.acceptPins(store.pins, m)) {
+                store.notePins("${m.items.size} recibidos del móvil")
                 store.pins = m
                 SyncBus.applyPins(this, m)
             }

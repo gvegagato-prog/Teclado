@@ -56,6 +56,7 @@ class SyncHub(private val context: Context, private val transport: Transport) {
                 reduced(img)?.let { transport.send(peer, it) }
             }
             is Msg.Pins -> if (store.pinsEnabled && SyncRules.acceptPins(store.pins, msg)) {
+                store.notePins("${msg.items.size} recibidos de la familia")
                 store.pins = msg
                 SyncBus.applyPins(context, msg)
                 broadcast(msg, except = peer)

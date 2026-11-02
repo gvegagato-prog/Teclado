@@ -98,10 +98,16 @@ object PeraBridge {
 /** Deja a Pera leer la última imagen copiada (solo con el permiso de firma, ver el manifiesto). */
 class ImageProvider : ContentProvider() {
     override fun onCreate() = true
-    override fun getType(uri: Uri) = "application/octet-stream"
+
+    /** Tipo real por los primeros bytes (la app donde se pega la imagen lo necesita). */
+    override fun getType(uri: Uri): String {
+        val head = ByteArray(12)
+        val n = runCatching { fileFor(context!!, uri).inputStream().use { it.read(head) } }.getOrDefault(0)
+        return sniff(head.copyOf(maxOf(0, n)))
+    }
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor? {
-        val f = file(context!!).takeIf { it.exists() } ?: return null
+        val f = fileFor(context!!, uri).takeIf { it.exists() } ?: return null
         return ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY)
     }
 
@@ -113,6 +119,20 @@ class ImageProvider : ContentProvider() {
     companion object {
         const val AUTHORITY = "app.teclado.pera"
         fun file(context: Context) = File(context.cacheDir, "pera_clip_image")
+
+        /** Copia para pegar en la app actual (se da permiso de lectura solo a esa app, ver commitContent). */
+        fun pasteFile(context: Context) = File(context.cacheDir, "paste_image")
+
+        private fun fileFor(context: Context, uri: Uri) =
+            if (uri.path?.startsWith("/paste") == true) pasteFile(context) else file(context)
+
+        fun sniff(b: ByteArray): String = when {
+            b.size >= 4 && b[0] == 0x89.toByte() && b[1] == 'P'.code.toByte() -> "image/png"
+            b.size >= 3 && b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte() -> "image/jpeg"
+            b.size >= 4 && String(b, 0, 3) == "GIF" -> "image/gif"
+            b.size >= 12 && String(b, 0, 4) == "RIFF" && String(b, 8, 4) == "WEBP" -> "image/webp"
+            else -> "image/jpeg"
+        }
     }
 }
 
@@ -128,10 +148,9 @@ class PinsReceiver : BroadcastReceiver() {
         }
         val store = ClipStore(ClipStore.fileFor(context.filesDir))
         store.load()
-        val before = store.pinsTs
         if (store.replacePinned(items, ts)) {
             store.flush()
-            if (store.pinsTs != ts && store.pinsTs != before) PeraBridge.sendPins(context, store) // se combinaron
+            if (store.pinsTs != ts) PeraBridge.sendPins(context, store) // se combinaron: se reparte la unión
         }
     }
 }

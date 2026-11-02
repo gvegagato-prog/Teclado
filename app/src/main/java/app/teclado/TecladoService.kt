@@ -94,6 +94,36 @@ open class TecladoService : InputMethodService(), KeyboardListener {
         }
     }
 
+    /**
+     * Inserta una imagen en la app actual con commitContent (es como los teclados insertan GIF y
+     * stickers). Solo funciona si la app lo admite (EditorInfo.contentMimeTypes); si no, no se pega nada
+     * (mejor que pegar la dirección interna de la imagen como texto).
+     */
+    private fun pasteImage(source: android.net.Uri) {
+        val info = currentInputEditorInfo ?: return
+        val accepted = info.contentMimeTypes ?: emptyArray()
+        if (accepted.none { it.startsWith("image/") || it == "*/*" }) return
+        Thread({
+            val dest = ImageProvider.pasteFile(this)
+            val ok = runCatching {
+                contentResolver.openInputStream(source)?.use { input -> dest.outputStream().use { input.copyTo(it) } } != null
+            }.getOrDefault(false)
+            if (!ok) return@Thread
+            val head = ByteArray(12)
+            val n = dest.inputStream().use { it.read(head) }
+            val mime = ImageProvider.sniff(head.copyOf(maxOf(0, n)))
+            val uri = android.net.Uri.parse("content://${ImageProvider.AUTHORITY}/paste?t=${System.currentTimeMillis()}")
+            android.os.Handler(mainLooper).post {
+                val ic = currentInputConnection ?: return@post
+                val desc = android.content.ClipDescription("Imagen", arrayOf(mime))
+                ic.commitContent(
+                    android.view.inputmethod.InputContentInfo(uri, desc, null),
+                    android.view.inputmethod.InputConnection.INPUT_CONTENT_GRANT_READ_URI_PERMISSION, null,
+                )
+            }
+        }, "teclado-pegar-imagen").start()
+    }
+
     /** Fijadas que llegan de otro teclado de la familia Pera (en el hilo principal). */
     fun applyRemotePins(items: List<ClipStore.Pinned>, ts: Long) {
         if (editingTitle()) return // no se pisa un título a medio escribir; llegará en la próxima edición
@@ -116,6 +146,12 @@ open class TecladoService : InputMethodService(), KeyboardListener {
 
     override fun onPasteLatest() {
         val clip = try { clipboard().primaryClip } catch (_: Exception) { null }
+        // Imagen (copiada aquí o llegada de otro dispositivo con Pera): se inserta como imagen, no como texto.
+        val first = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)
+        if (clip != null && first?.uri != null && clip.description.hasMimeType("image/*")) {
+            pasteImage(first.uri)
+            return
+        }
         val sys = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
         val text = sys?.takeIf { it.isNotEmpty() } ?: clipStore.items.firstOrNull() ?: return
         pasteText(text)
@@ -196,6 +232,8 @@ open class TecladoService : InputMethodService(), KeyboardListener {
         prefs = Prefs(this)
         clipStore = ClipStore(ClipStore.fileFor(filesDir))
         clipStore.load()
+        // Las fijadas que ya hubiera (de antes de sincronizar) salen hacia la familia al arrancar.
+        if (clipStore.stampPinsForSync()) PeraBridge.sendPins(this, clipStore)
         clipEpochSeen = prefs.clipEpoch
         try { clipboard().addPrimaryClipChangedListener(clipListener) } catch (_: Exception) {}
         Thread({

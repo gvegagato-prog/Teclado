@@ -198,7 +198,7 @@ class MainActivity : Activity() {
 
     private fun stateKey(f: Feature) = listOf(
         f.active(), f.status(), isHost, isClient, shizukuReady, batteryFree, hotspotState, message,
-        store.clipEnabled, store.pinsEnabled, store.wifiEnabled, store.wifiDiag, store.clipDiag, SyncService.status,
+        store.clipEnabled, store.pinsEnabled, store.wifiEnabled, store.wifiDiag, store.clipDiag, store.pinsDiag, SyncService.status,
         ClientService.lastMessage,
     ).joinToString("|")
 
@@ -350,7 +350,8 @@ class MainActivity : Activity() {
 
     private fun clipDetail(b: LinearLayout) {
         b.addView(look.toggle("Copiar y pegar entre dispositivos", store.clipEnabled) { store.clipEnabled = it; refresh() })
-        b.info("Lo último que copias (texto o una foto) aparece en tu tablet y tu Mac, listo para pegar. Las fotos se reducen y por Bluetooth tardan unos segundos.")
+        b.info("Lo último que copias (texto o una foto) aparece en tu tablet y tu Mac, listo para pegar. Las fotos van a calidad completa por tu Wi-Fi; solo si no hay red en común se reducen y van por Bluetooth.")
+        b.info("Para pegar una foto: el botón de pegar de Teclado la inserta en las apps que admiten imágenes, o mantén pulsado y «Pegar» en las que lo permitan.")
         b.familyRequirement()
         b.addView(look.requirement(clipSource() != null,
             clipSource()?.let { "Detecta lo que copias con $it" } ?: "Para enviar lo que copias: usa Teclado como teclado (o Shizuku)",
@@ -376,6 +377,11 @@ class MainActivity : Activity() {
         b.info("Los textos que fijas en Teclado (con su título) aparecen en el Teclado de tus otros dispositivos. Gana el último cambio. La primera vez se juntan con los que ya tuvieras.")
         b.familyRequirement()
         b.addView(look.requirement(tecladoInstalled, "Teclado instalado (firmado con tu misma clave)"))
+        b.addView(look.requirement(SyncBus.tecladoIsKeyboard(this), "Teclado es tu teclado activo",
+            "Elegir teclado" to { startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) }))
+        b.addView(look.divider())
+        b.addView(look.label("Últimos movimientos", 14f, bold = true))
+        b.info(store.pinsDiag.joinToString("\n").ifEmpty { "Aún nada (abre el teclado una vez para que envíe sus fijados)" })
     }
 
     // --- Wi-Fi ---

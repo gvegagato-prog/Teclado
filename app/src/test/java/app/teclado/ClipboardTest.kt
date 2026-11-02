@@ -40,32 +40,40 @@ class ClipboardTest {
         ShadowLooper.idleMainLooper()
     }
 
-    @Test fun pinnedSyncNewestWinsAndFirstSyncMerges() {
+    @Test fun pinnedSyncFirstMergesThenNewestWins() {
         val f = File(ctx.cacheDir, "pins.json").also { it.delete() }
         val st = ClipStore(f)
         st.add("local"); st.pin(0)
-        val localTs = st.pinsTs
-        assertTrue(localTs > 0)
-        // Llega una lista más vieja: no se toca.
-        assertEquals(false, st.replacePinned(listOf(ClipStore.Pinned("viejo", "")), localTs - 1))
-        assertEquals(listOf("local"), st.pinned.map { it.text })
-        // Llega una más nueva: sustituye (otro teclado borró «local» y fijó «nuevo»).
-        assertTrue(st.replacePinned(listOf(ClipStore.Pinned("nuevo", "Título")), localTs + 10))
+        assertTrue(st.pinsTs > 0)
+        // Primera sincronización: se combinan (no se pierde «local») y la unión es la más nueva.
+        assertTrue(st.replacePinned(listOf(ClipStore.Pinned("remota", "R")), 5))
+        assertEquals(listOf("remota", "local"), st.pinned.map { it.text })
+        assertTrue(st.pinsSynced)
+        assertTrue(st.pinsTs > 5) // distinto del recibido: hay que repartir la unión
+        val ts = st.pinsTs
+        // Después: una lista más vieja no toca nada…
+        assertEquals(false, st.replacePinned(listOf(ClipStore.Pinned("vieja", "")), ts - 1))
+        assertEquals(listOf("remota", "local"), st.pinned.map { it.text })
+        // …y una más nueva sustituye (otro teclado quitó «local» y fijó «nuevo»).
+        assertTrue(st.replacePinned(listOf(ClipStore.Pinned("nuevo", "Título")), ts + 10))
         assertEquals(listOf("nuevo"), st.pinned.map { it.text })
-        assertEquals("Título", st.pinned[0].title)
+        assertEquals(ts + 10, st.pinsTs)
         st.flush()
         val again = ClipStore(f).also { it.load() }
-        assertEquals(localTs + 10, again.pinsTs)
-        assertEquals(listOf("nuevo"), again.pinned.map { it.text })
+        assertTrue(again.pinsSynced)
+        assertEquals(ts + 10, again.pinsTs)
+        assertEquals("Título", again.pinned[0].title)
+    }
 
-        // Un teclado que nunca sincronizó y ya tenía fijadas: se combinan y la unión pasa a ser la más nueva.
+    @Test fun existingPinsGetStampedToBeSent() {
         val g = File(ctx.cacheDir, "pins2.json").also { it.delete() }
         g.writeText("""{"history":[],"pinned":[{"x":"mía","t":""}]}""")
         val old = ClipStore(g).also { it.load() }
         assertEquals(0L, old.pinsTs)
-        assertTrue(old.replacePinned(listOf(ClipStore.Pinned("de la familia", "")), 500))
-        assertEquals(listOf("de la familia", "mía"), old.pinned.map { it.text })
-        assertTrue(old.pinsTs > 500)
+        assertTrue(old.stampPinsForSync())
+        assertTrue(old.pinsTs > 0)
+        val empty = ClipStore(File(ctx.cacheDir, "pins3.json").also { it.delete() })
+        assertEquals(false, empty.stampPinsForSync())
     }
 
     @Test fun storeKeepsLast50NewestFirstWithoutDuplicates() {
@@ -100,6 +108,16 @@ class ClipboardTest {
         copy("segundo\nlínea dos")
         svc.onPasteLatest()
         assertEquals("segundo\nlínea dos", svc.editor.text.toString())
+    }
+
+    /** Una imagen en el portapapeles (p. ej. llegada de otro dispositivo con Pera) no se pega como texto. */
+    @Test fun imageClipIsNotPastedAsItsAddress() {
+        copy("texto anterior")
+        val clip = ClipData("Pera", arrayOf("image/jpeg"), ClipData.Item(android.net.Uri.parse("content://app.pera.clip/x.img")))
+        cm.setPrimaryClip(clip)
+        ShadowLooper.idleMainLooper()
+        svc.onPasteLatest()
+        assertEquals("", svc.editor.text.toString())
     }
 
     @Test fun pickFromHistoryPastesThatEntry() {

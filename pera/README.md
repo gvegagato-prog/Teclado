@@ -78,7 +78,7 @@ Si el móvil no está, la tablet y el Mac no se sincronizan entre ellos.
 
 | Dispositivo | Detectar lo que copias | Recibir lo copiado en otro |
 |---|---|---|
-| Android con **Teclado** como teclado activo | ✓ (Teclado se lo pasa a Pera; Android 14+) | ✓ |
+| Android con **Teclado** como teclado activo | ✓ (Teclado se lo pasa a Pera; las dos firmadas con la misma clave) | ✓ |
 | Android con **Shizuku** | ✓ (Android avisa «Shell ha pegado…»; se quita desactivando «Mostrar acceso al portapapeles» en los ajustes de privacidad) | ✓ |
 | Android sin ninguno | ✗: usa **Compartir → «Enviar a la familia Pera»** | ✓ |
 | **Mac** | ✓ | ✓ |
@@ -90,14 +90,16 @@ Si el móvil no está, la tablet y el Mac no se sincronizan entre ellos.
 ### Redes Wi-Fi
 
 **La Wi-Fi del móvil, en todos lados**: cuando el móvil se conecta a una Wi-Fi, se la pasa al momento a
-la tablet y al Mac, aunque no la conocieran:
-- **Tablet con Shizuku**: la guarda como una red normal y se conecta.
-- **Tablet sin Shizuku**: la añade como red sugerida (Android se conecta solo si no tiene otra Wi-Fi) y,
-  si en ese momento no tiene Wi-Fi, aparece un aviso «Conectar a «…», la Wi-Fi de tu móvil»: un toque y
-  queda guardada de verdad (pantalla del sistema de Android 11+, hasta 5 redes por vez).
-- **Mac**: si no está conectado a ninguna Wi-Fi, se une solo (lo reintenta cada minuto).
+la tablet y al Mac, y estos **se conectan solos**, aunque no la conocieran:
+- **Tablet con Shizuku**: se conecta ya, como si la tocaras en Ajustes, también si estaba en otra Wi-Fi.
+- **Tablet sin Shizuku**: Android **no deja** a una app normal conectarse a una red por su cuenta. Pera la
+  deja como «red sugerida» y es Android quien decide: se conecta solo cuando no tiene otra Wi-Fi (y la
+  primera vez pregunta si permites las redes sugeridas de Pera). **Para que sea automático de verdad,
+  instala también Shizuku en la tablet** (el mismo fork, con «Iniciar al arrancar»).
+- **Mac**: cuando el móvil cambia de red, el Mac se pasa a ella; y si se queda sin Wi-Fi, se une a la del
+  móvil (lo reintenta cada minuto).
 
-Para esto el **móvil necesita Shizuku** (Android no deja a una app normal leer la contraseña de la red).
+Para todo esto el **móvil necesita Shizuku** (Android no deja a una app normal leer la contraseña).
 En la app, la línea «Redes:» dice qué ha podido leer el móvil, o el error si algo falla.
 
 Además se sincronizan **todas** las redes guardadas:
@@ -138,6 +140,8 @@ basta). En **OPPO/ColorOS**, además: ajustes de la app › batería › permiti
 e **inicio automático**.
 
 ### El botón del panel
+- Si la tablet ya está conectada al móvil (sincronización), la orden va por esa misma conexión; antes
+  buscaba el móvil otra vez y, como ya estaba conectado, no lo encontraba. Igual en el Mac.
 - Cambia al instante al tocarlo y muestra «Conectando…» o «Apagando…» mientras trabaja.
 - Si la tablet tiene activada la sincronización, el botón refleja el **estado real** del hotspot del
   móvil (también si lo enciende o apaga el Mac).
@@ -164,8 +168,9 @@ e **inicio automático**.
   encontrado; si en tu versión aparece, permite a Pera «Pegar siempre» en Privacidad y seguridad.
 - **Shizuku y redes/portapapeles**: los métodos internos del sistema que usa Pera los he comprobado en el
   código fuente de Android (AOSP). Samsung y OPPO modifican partes del sistema y podrían cambiarlos.
-- **Teclado → Pera** necesita Android 14 o posterior (para que Pera sepa con certeza que la copia la
-  envía Teclado y no otra app).
+- **Teclado → Pera**: el receptor de Pera exige un permiso de firma, así que solo funciona si Teclado y
+  Pera están firmadas con la misma clave (la de `gon-apps-release.jks`). En la app, la línea
+  «Portapapeles» muestra las últimas copias enviadas y recibidas, para ver dónde se corta si falla.
 - La operadora puede bloquear el hotspot en algunas tarifas; Pera no puede saltárselo.
 
 ## Firma

@@ -386,21 +386,23 @@ class HostService : Service() {
             } else {
                 Protocol.STATE_FAILED
             }
-            notifyState(s)
+            notifyState(s, force = true)
             return
         }
         // El sistema tarda unos segundos: se avisa a los clientes en cada cambio.
         val target = if (on) Protocol.STATE_ON else Protocol.STATE_OFF
+        // Siempre se confirma el estado al que ha pedido la orden, aunque no haya cambiado (p. ej.
+        // ya estaba encendido): si no, el cliente esperaría un aviso que nunca llega.
+        notifyState(force = true)
         repeat(40) {
-            notifyState()
             if (lastState == target) return
             Thread.sleep(500)
+            notifyState()
         }
-        notifyState()
     }
 
-    private fun notifyState(state: Int = hotspot.state()) {
-        if (state == lastState) return
+    private fun notifyState(state: Int = hotspot.state(), force: Boolean = false) {
+        if (state == lastState && !force) return
         lastState = state
         val char = stateChar ?: return
         val value = byteArrayOf(state.toByte())

@@ -25,14 +25,14 @@ struct MenuContent: View {
     var body: some View {
         Text(model.status)
         Divider()
-        Button("Conectar a los datos del móvil") { model.run(turnOn: true) }
+        Button("Conectar a los datos del móvil") { model.run(turnOn: true, via: family.link) }
             .disabled(model.busy)
-        Button("Apagar el hotspot del móvil") { model.run(turnOn: false) }
+        Button("Apagar el hotspot del móvil") { model.run(turnOn: false, via: family.link) }
             .disabled(model.busy)
         Divider()
         Text("Familia Pera: \(family.status)")
         if let net = family.phoneNet {
-            Text("Wi-Fi del móvil: \(net.ssid) (el Mac se une solo si se queda sin Wi-Fi)")
+            Text("Wi-Fi del móvil: \(net.ssid) (el Mac se pasa a ella)")
         }
         Toggle("Sincronizar lo copiado", isOn: $family.clipEnabled)
         Toggle("Sincronizar redes Wi-Fi", isOn: $family.wifiEnabled)
@@ -74,9 +74,12 @@ final class PeraModel: ObservableObject {
         return on ? "personalhotspot" : "antenna.radiowaves.left.and.right"
     }
 
-    func run(turnOn: Bool) {
+    func run(turnOn: Bool, via sync: SyncLink) {
         guard !busy else { return }
         busy = true
+        // Con la conexión permanente activa, la orden va por ella (buscar el móvil otra vez fallaría).
+        status = turnOn ? "Encendiendo el hotspot…" : "Apagando el hotspot…"
+        if sync.hotspot(on: turnOn, completion: { [weak self] outcome in self?.handle(outcome) }) { return }
         link.run(turnOn: turnOn, progress: { [weak self] text in
             self?.status = text
         }, completion: { [weak self] outcome in

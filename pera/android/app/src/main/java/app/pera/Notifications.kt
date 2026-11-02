@@ -11,7 +11,6 @@ object Notifications {
     const val HOST_ID = 1
     const val CLIENT_ID = 2
     const val SYNC_ID = 3
-    const val HERE_ID = 4
 
     fun createChannel(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java)

@@ -18,8 +18,14 @@ object SyncBus {
     fun localCopy(context: Context, text: String) {
         if (text.isBlank() || text.length > SyncStore.MAX_CLIP_CHARS) return
         if (text == SyncStore.lastApplied) return // lo acabamos de poner nosotros
-        if (!SyncStore(context).clipEnabled) return
-        onLocalClip?.invoke(text)
+        val store = SyncStore(context)
+        if (!store.clipEnabled) return
+        val handler = onLocalClip
+        if (handler != null) return handler(text)
+        // El servicio aún no ha arrancado (p. ej. Teclado acaba de despertar a Pera): se guarda como
+        // la copia más reciente y sale al conectar (el saludo la reparte por ser la más nueva).
+        store.clip = SyncStore.newClip(text, store.deviceName)
+        store.noteClip("guardada; se enviará en cuanto Pera conecte")
     }
 
     /** Escribe en el portapapeles de este dispositivo (Android lo permite sin estar en primer plano). */

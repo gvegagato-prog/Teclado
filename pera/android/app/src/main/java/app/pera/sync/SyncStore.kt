@@ -64,6 +64,17 @@ class SyncStore(context: Context) {
         get() = prefs.getString("wifi_diag", null)
         set(v) = prefs.edit().putString("wifi_diag", v).apply()
 
+    /** Últimos movimientos del portapapeles (diagnóstico en la app). */
+    val clipDiag: List<String>
+        get() = prefs.getString("clip_diag", "")!!.split("\n").filter { it.isNotBlank() }
+
+    @Synchronized
+    fun noteClip(event: String) {
+        val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.ROOT).format(java.util.Date())
+        val lines = (listOf("$time $event") + clipDiag).take(3)
+        prefs.edit().putString("clip_diag", lines.joinToString("\n")).apply()
+    }
+
     private fun key(w: Protocol.Wifi) = "${w.ssid}|${w.pass}|${w.sec}"
 
     companion object {

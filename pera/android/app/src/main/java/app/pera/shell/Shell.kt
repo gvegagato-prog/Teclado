@@ -85,8 +85,29 @@ object Shell {
     }.onFailure { lastWifiError = "redes guardadas: ${it.javaClass.simpleName}: ${it.message}"; Log.w(TAG, "getPrivilegedConfiguredNetworks", it) }
         .getOrDefault(emptyList())
 
+    /** Nombre de la Wi-Fi a la que está conectado este dispositivo (sin censurar), o null. */
+    fun currentSsid(): String? = runCatching {
+        val info = call(wifi(), "getConnectionInfo") as android.net.wifi.WifiInfo? ?: return null
+        if (info.networkId < 0) return null
+        @Suppress("DEPRECATION")
+        info.ssid?.removeSurrounding("\"")
+    }.getOrNull()
+
+    /**
+     * Guarda la red y se conecta a ella ya (como al tocarla en Ajustes), aunque haya otra Wi-Fi.
+     * enableNetwork(netId, disableOthers = true) lanza la conexión para llamantes con NETWORK_SETTINGS
+     * (comprobado en WifiServiceImpl de AOSP); la firma es la misma en Android 12 a 16.
+     */
+    fun connectTo(w: Protocol.Wifi): Boolean = runCatching {
+        val id = addNetworkId(w)
+        if (id < 0) return false
+        call(wifi(), "enableNetwork", IntArg(id), BoolArg(true)) as Boolean
+    }.onFailure { Log.w(TAG, "enableNetwork", it) }.getOrDefault(false)
+
     /** Guarda una red como si la hubieras añadido en Ajustes. true si Android la aceptó. */
-    fun addNetwork(w: Protocol.Wifi): Boolean = runCatching {
+    fun addNetwork(w: Protocol.Wifi): Boolean = addNetworkId(w) >= 0
+
+    private fun addNetworkId(w: Protocol.Wifi): Int = runCatching {
         val c = WifiConfiguration()
         c.SSID = "\"${w.ssid}\""
         when (w.sec) {
@@ -100,9 +121,8 @@ object Shell {
                 c.preSharedKey = "\"${w.pass}\""
             }
         }
-        val id = call(wifi(), "addOrUpdateNetwork", c, Bundle()) as Int
-        id >= 0
-    }.onFailure { Log.w(TAG, "addOrUpdateNetwork", it) }.getOrDefault(false)
+        call(wifi(), "addOrUpdateNetwork", c, Bundle()) as Int
+    }.onFailure { Log.w(TAG, "addOrUpdateNetwork", it) }.getOrDefault(-1)
 
     private fun toWifi(c: WifiConfiguration): Protocol.Wifi? {
         val raw = c.SSID ?: return null
@@ -184,6 +204,10 @@ object Shell {
         throw last ?: NoSuchMethodException("$name con argumentos compatibles")
     }
 
+    /** Valores explícitos para parámetros int / boolean (si no, se rellenan por defecto). */
+    internal class IntArg(val v: Int)
+    internal class BoolArg(val v: Boolean)
+
     private fun fill(m: Method, given: Array<out Any>): Array<Any?>? {
         var strings = 0
         var ints = 0
@@ -192,7 +216,11 @@ object Shell {
         for (i in 0 until m.parameterCount) {
             val t = m.parameterTypes[i]
             val idx = given.indices.firstOrNull { !used[it] && t.isInstance(given[it]) }
+            val intIdx = if (t == Int::class.javaPrimitiveType) given.indices.firstOrNull { !used[it] && given[it] is IntArg } else null
+            val boolIdx = if (t == Boolean::class.javaPrimitiveType) given.indices.firstOrNull { !used[it] && given[it] is BoolArg } else null
             args[i] = when {
+                intIdx != null -> { used[intIdx] = true; (given[intIdx] as IntArg).v }
+                boolIdx != null -> { used[boolIdx] = true; (given[boolIdx] as BoolArg).v }
                 idx != null -> { used[idx] = true; given[idx] }
                 t == String::class.java -> if (strings++ == 0) PACKAGE else null
                 t == Int::class.javaPrimitiveType -> if (ints++ == 0) userId else 0

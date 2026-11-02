@@ -48,6 +48,7 @@ class MainActivity : Activity() {
     private lateinit var syncSource: TextView
     private lateinit var syncStatus: TextView
     private lateinit var wifiDiag: TextView
+    private lateinit var clipDiag: TextView
     private lateinit var saveNets: Button
     private lateinit var store: SyncStore
     private val io = Executors.newSingleThreadExecutor()
@@ -161,6 +162,8 @@ class MainActivity : Activity() {
         root.addView(syncStatus)
         wifiDiag = text("")
         root.addView(wifiDiag)
+        clipDiag = text("")
+        root.addView(clipDiag)
         saveNets = button(getString(R.string.save_nets)) {
             val pending = (store.nets + listOfNotNull(store.here)).distinctBy { it.ssid }.filter { !store.saved(it) }
             startActivity(app.pera.client.SaveNetworksActivity.intent(this, pending))
@@ -221,6 +224,7 @@ class MainActivity : Activity() {
                 "${store.nets.size} recibidas del móvil · red del móvil: ${store.here?.ssid ?: "ninguna"}"
             },
         )
+        clipDiag.text = getString(R.string.clip_diag, store.clipDiag.joinToString("\n").ifEmpty { "sin movimientos todavía" })
         // Sin Shizuku, la tablet solo puede guardarlas con la pantalla del sistema (un toque).
         saveNets.visibility = if (!host && store.nets.isNotEmpty() && hotspot.shizukuStatus() != ShizukuState.READY) View.VISIBLE else View.GONE
         syncSwitch.isEnabled = !host // el móvil ya es el centro: no se conecta a sí mismo

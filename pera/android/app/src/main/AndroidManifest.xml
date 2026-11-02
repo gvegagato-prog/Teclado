@@ -20,6 +20,12 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- Solo las apps firmadas con la misma clave (Teclado y Pera) pueden pasarse lo copiado.
+         La declaran las dos para que no importe el orden de instalación. -->
+    <permission
+        android:name="app.pera.permission.SEND_CLIP"
+        android:protectionLevel="signature" />
+
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
     <application
@@ -91,7 +97,7 @@
         <receiver
             android:name=".sync.ClipBridgeReceiver"
             android:exported="true"
-            tools:ignore="ExportedReceiver">
+            android:permission="app.pera.permission.SEND_CLIP">
             <intent-filter>
                 <action android:name="app.pera.action.CLIP" />
             </intent-filter>

@@ -75,6 +75,24 @@ class HubLink(
     }
 
     /** Envía un mensaje al móvil (se descarta si no hay conexión). */
+    /** Orden al hotspot del móvil por esta misma conexión (sin buscar el móvil otra vez). */
+    fun hotspot(on: Boolean) = handler.post {
+        val g = gatt ?: return@post
+        val c = g.getService(Protocol.SERVICE)?.getCharacteristic(Protocol.COMMAND) ?: return@post
+        enqueue { write(c, byteArrayOf(if (on) Protocol.CMD_ON else Protocol.CMD_OFF)) }
+    }
+
+    /** Lee la red del hotspot del móvil (nombre y contraseña). */
+    fun readHotspotWifi(cb: (ByteArray?) -> Unit) = handler.post {
+        val g = gatt
+        val c = g?.getService(Protocol.SERVICE)?.getCharacteristic(Protocol.WIFI)
+        if (g == null || c == null) return@post cb(null)
+        wifiReadCallback = cb
+        enqueue { g.readCharacteristic(c) }
+    }
+
+    private var wifiReadCallback: ((ByteArray?) -> Unit)? = null
+
     fun send(msg: Msg) = handler.post {
         val c = msgIn ?: return@post
         if (!connected) return@post
@@ -263,6 +281,10 @@ class HubLink(
         override fun onCharacteristicRead(g: BluetoothGatt, c: BluetoothGattCharacteristic, value: ByteArray, status: Int) {
             opDone()
             if (c.uuid == Protocol.STATE && status == BluetoothGatt.GATT_SUCCESS) value.firstOrNull()?.let { onHotspotState(it.toInt()) }
+            if (c.uuid == Protocol.WIFI) {
+                wifiReadCallback?.invoke(value.takeIf { status == BluetoothGatt.GATT_SUCCESS })
+                wifiReadCallback = null
+            }
         }
 
         @Deprecated("API < 33")

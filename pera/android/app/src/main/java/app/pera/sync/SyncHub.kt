@@ -36,6 +36,7 @@ class SyncHub(private val context: Context, private val transport: Transport) {
                 }
             }
             is Msg.Clip -> if (store.clipEnabled && SyncRules.acceptClip(store.clip, msg)) {
+                store.noteClip("recibida de ${msg.from}")
                 store.clip = msg
                 SyncBus.applyClip(context, msg.text)
                 broadcast(msg, except = peer)
@@ -56,6 +57,8 @@ class SyncHub(private val context: Context, private val transport: Transport) {
     fun onLocalClip(text: String) = worker.execute {
         val clip = SyncStore.newClip(text, store.deviceName)
         store.clip = clip
+        val n = transport.peers().size
+        store.noteClip(if (n == 0) "copiada aquí; ningún dispositivo conectado" else "enviada a $n dispositivo(s)")
         broadcast(clip, except = null)
     }
 

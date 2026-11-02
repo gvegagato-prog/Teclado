@@ -14,7 +14,7 @@ final class FamilySync: ObservableObject {
     @Published var wifiEnabled: Bool { didSet { defaults.set(wifiEnabled, forKey: "wifiOn") } }
 
     private let defaults = UserDefaults.standard
-    private let link = SyncLink()
+    let link = SyncLink()
     private let deviceName = Host.current().localizedName ?? "Mac"
     private var timer: Timer?
     private var lastChange = NSPasteboard.general.changeCount
@@ -76,8 +76,10 @@ final class FamilySync: ObservableObject {
             saveNets(pending, "pendingNets")
         case let .here(w):
             guard wifiEnabled else { return }
+            let changed = w?.ssid != phoneNet?.ssid
             phoneNet = w
-            joinPhoneNetIfOffline()
+            // El móvil se ha conectado a otra red: el Mac se pasa a ella (aunque esté en otra Wi-Fi).
+            joinPhoneNetIfOffline(force: changed)
         case .hello:
             break
         }
@@ -111,13 +113,13 @@ final class FamilySync: ObservableObject {
     // MARK: - Redes Wi-Fi
 
     /// Si el Mac no tiene Wi-Fi, se une a la red del móvil aunque no la conociera.
-    private func joinPhoneNetIfOffline() {
-        guard wifiEnabled, let w = phoneNet, !joining, Date().timeIntervalSince(lastJoinAttempt) > 50 else { return }
+    private func joinPhoneNetIfOffline(force: Bool = false) {
+        guard wifiEnabled, let w = phoneNet, !joining, force || Date().timeIntervalSince(lastJoinAttempt) > 50 else { return }
         lastJoinAttempt = Date()
         joining = true
         DispatchQueue.global(qos: .utility).async {
-            let offline = !WifiJoiner.hasWifiAddress()
-            let joined = offline && WifiJoiner.join(w, attempts: 2)
+            let shouldJoin = force || !WifiJoiner.hasWifiAddress()
+            let joined = shouldJoin && WifiJoiner.join(w, attempts: 2)
             DispatchQueue.main.async {
                 self.joining = false
                 if joined { self.status = "Conectado a «\(w.ssid)», la Wi-Fi del móvil" }

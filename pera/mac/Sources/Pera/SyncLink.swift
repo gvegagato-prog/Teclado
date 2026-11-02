@@ -16,6 +16,15 @@ final class SyncLink: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     private var central: CBCentralManager?
     private var peripheral: CBPeripheral?
     private var msgIn: CBCharacteristic?
+    private var commandChar: CBCharacteristic?
+    private var stateChar: CBCharacteristic?
+    private var wifiChar: CBCharacteristic?
+
+    // Orden al hotspot en curso por esta conexión.
+    private var hotspotTarget: Int?
+    private var hotspotOn = true
+    private var hotspotDone: ((PeraLink.Outcome) -> Void)?
+    private var hotspotTimeout: DispatchWorkItem?
     private var foundHubId: Data?
     private let assembler = Framing.Assembler()
     private var nextMsgId: UInt16 = 0
@@ -34,6 +43,41 @@ final class SyncLink: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         lost()
         central?.stopScan()
         scan()
+    }
+
+    /// Enciende/apaga el hotspot del móvil por esta conexión (sin buscar el móvil otra vez).
+    /// Devuelve false si ahora no se puede (y entonces hay que usar PeraLink).
+    func hotspot(on: Bool, completion: @escaping (PeraLink.Outcome) -> Void) -> Bool {
+        guard connected, hotspotDone == nil, let p = peripheral, let cmd = commandChar, stateChar != nil else { return false }
+        hotspotOn = on
+        hotspotTarget = on ? PeraProtocol.stateOn : PeraProtocol.stateOff
+        hotspotDone = completion
+        let item = DispatchWorkItem { [weak self] in self?.finishHotspot(.failure("El móvil no respondió a tiempo")) }
+        hotspotTimeout = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 25, execute: item)
+        p.writeValue(Data([on ? PeraProtocol.cmdOn : PeraProtocol.cmdOff]), for: cmd, type: .withResponse)
+        return true
+    }
+
+    private func finishHotspot(_ outcome: PeraLink.Outcome) {
+        hotspotTimeout?.cancel()
+        hotspotTimeout = nil
+        hotspotTarget = nil
+        let done = hotspotDone
+        hotspotDone = nil
+        done?(outcome)
+    }
+
+    private func handleState(_ s: Int) {
+        guard let target = hotspotTarget else { return }
+        if s == PeraProtocol.stateNoShizuku {
+            finishHotspot(.failure("En el móvil, Shizuku no está activo. Ábrelo y arráncalo."))
+        } else if s == PeraProtocol.stateFailed {
+            finishHotspot(.failure("El móvil no pudo encender el hotspot"))
+        } else if s == target {
+            hotspotTarget = nil
+            if hotspotOn, let w = wifiChar { peripheral?.readValue(for: w) } else { finishHotspot(.success(on: hotspotOn, wifi: nil)) }
+        }
     }
 
     func send(_ msg: Msg) {
@@ -60,6 +104,10 @@ final class SyncLink: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
     private func lost() {
         connected = false
+        if hotspotDone != nil { finishHotspot(.failure("Se perdió la conexión con el móvil")) }
+        commandChar = nil
+        stateChar = nil
+        wifiChar = nil
         msgIn = nil
         outbox.removeAll()
         writing = false
@@ -124,12 +172,16 @@ final class SyncLink: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             central?.cancelPeripheralConnection(peripheral)
             return
         }
-        peripheral.discoverCharacteristics([PeraProtocol.msgIn, PeraProtocol.msgOut], for: s)
+        peripheral.discoverCharacteristics(
+            [PeraProtocol.msgIn, PeraProtocol.msgOut, PeraProtocol.command, PeraProtocol.state, PeraProtocol.wifi], for: s)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
         let chars = service.characteristics ?? []
         msgIn = chars.first { $0.uuid == PeraProtocol.msgIn }
+        commandChar = chars.first { $0.uuid == PeraProtocol.command }
+        stateChar = chars.first { $0.uuid == PeraProtocol.state }
+        wifiChar = chars.first { $0.uuid == PeraProtocol.wifi }
         guard msgIn != nil, let out = chars.first(where: { $0.uuid == PeraProtocol.msgOut }) else {
             onStatus("El móvil tiene una versión de Pera sin sincronización")
             central?.cancelPeripheralConnection(peripheral)
@@ -141,6 +193,7 @@ final class SyncLink: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic,
                     error: Error?) {
+        if characteristic.uuid == PeraProtocol.state { return } // avisos del hotspot activados
         guard characteristic.uuid == PeraProtocol.msgOut else { return }
         if let error {
             onStatus("No se pudo emparejar con el móvil: \(error.localizedDescription)")
@@ -148,12 +201,17 @@ final class SyncLink: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             return
         }
         connected = true
+        if let s = stateChar { peripheral.setNotifyValue(true, for: s) }
         PeraProtocol.rememberHub(foundHubId)
         onStatus("Conectado al móvil")
         onConnected()
     }
 
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+        if characteristic.uuid == PeraProtocol.command {
+            if let error { finishHotspot(.failure("El móvil rechazó la orden: \(error.localizedDescription)")) }
+            return
+        }
         guard characteristic.uuid == PeraProtocol.msgIn else { return }
         writing = false
         if error != nil { outbox.removeAll() } // mensaje a medias: se descarta entero
@@ -161,6 +219,15 @@ final class SyncLink: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        if characteristic.uuid == PeraProtocol.state {
+            if error == nil, let b = characteristic.value?.first { handleState(Int(b)) }
+            return
+        }
+        if characteristic.uuid == PeraProtocol.wifi {
+            let wifi = error == nil ? characteristic.value.flatMap { try? JSONDecoder().decode(PeraProtocol.Wifi.self, from: $0) } : nil
+            finishHotspot(.success(on: true, wifi: wifi))
+            return
+        }
         guard characteristic.uuid == PeraProtocol.msgOut, error == nil, let v = characteristic.value else { return }
         if let whole = assembler.add(v), let msg = Msg.decode(whole) { onMessage(msg) }
     }

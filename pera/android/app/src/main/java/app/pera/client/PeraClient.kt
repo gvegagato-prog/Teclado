@@ -217,8 +217,8 @@ class PeraClient(private val context: Context, private val progress: (String) ->
 
     /** Entrega la red al sistema; Android se conecta solo cuando la ve (la primera vez pide permiso). */
     private fun suggest(w: Protocol.Wifi): String {
-        if (app.pera.shell.Shell.ready() && app.pera.shell.Shell.addNetwork(w)) {
-            return "la tablet se conectará sola a «${w.ssid}»"
+        if (app.pera.shell.Shell.ready() && app.pera.shell.Shell.connectTo(w)) {
+            return "conectando a «${w.ssid}»"
         }
         val error = WifiApplier.suggest(context, w)
         return if (error == null) {

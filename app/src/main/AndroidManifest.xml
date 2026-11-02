@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Solo las apps firmadas con la misma clave (Teclado y Pera) pueden pasarse lo copiado.
+         La declaran las dos para que no importe el orden de instalación. -->
+    <permission
+        android:name="app.pera.permission.SEND_CLIP"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="app.pera.permission.SEND_CLIP" />
+
     <!-- Para pasar lo copiado a Pera (pera/ en este repo), si está instalada. -->
     <queries>
         <package android:name="app.pera" />

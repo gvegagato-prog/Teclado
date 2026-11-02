@@ -7,6 +7,21 @@ enum Msg {
     case nets([PeraProtocol.Wifi])
     /// La red a la que está conectado el móvil ahora mismo (nil = ninguna).
     case here(PeraProtocol.Wifi?)
+    /// Última imagen copiada (mensaje binario: [0x01][u16 cabecera][cabecera JSON][bytes]).
+    case img(Img)
+
+    struct Img: Equatable {
+        let id: String
+        let ts: Int64
+        let from: String
+        let mime: String
+        let data: Data
+
+        static func new(_ data: Data, from: String) -> Img {
+            Img(id: UUID().uuidString.lowercased(), ts: Int64(Date().timeIntervalSince1970 * 1000), from: from,
+                mime: "image/jpeg", data: data)
+        }
+    }
 
     struct Clip: Equatable {
         let id: String
@@ -20,8 +35,18 @@ enum Msg {
     }
 
     func encode() -> Data {
+        if case let .img(i) = self {
+            let hdr = (try? JSONSerialization.data(withJSONObject:
+                ["t": "img", "id": i.id, "ts": i.ts, "from": i.from, "mime": i.mime] as [String: Any])) ?? Data()
+            var out = Data([1, UInt8(hdr.count >> 8), UInt8(hdr.count & 0xFF)])
+            out.append(hdr)
+            out.append(i.data)
+            return out
+        }
         var o: [String: Any]
         switch self {
+        case .img:
+            return Data()
         case let .hello(device, clipTs):
             o = ["t": "hello", "dev": device, "clip": clipTs]
         case let .clip(c):
@@ -51,6 +76,17 @@ enum Msg {
     }
 
     static func decode(_ data: Data) -> Msg? {
+        if data.first == 1 {
+            let b = [UInt8](data.prefix(3))
+            guard b.count == 3 else { return nil }
+            let len = Int(b[1]) << 8 | Int(b[2])
+            guard data.count >= 3 + len,
+                  let h = (try? JSONSerialization.jsonObject(with: data.subdata(in: data.startIndex + 3 ..< data.startIndex + 3 + len))) as? [String: Any],
+                  h["t"] as? String == "img", let id = h["id"] as? String,
+                  let ts = (h["ts"] as? NSNumber)?.int64Value else { return nil }
+            return .img(Img(id: id, ts: ts, from: h["from"] as? String ?? "?", mime: h["mime"] as? String ?? "image/jpeg",
+                            data: data.subdata(in: data.startIndex + 3 + len ..< data.endIndex)))
+        }
         guard let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let t = o["t"] as? String else { return nil }
         switch t {

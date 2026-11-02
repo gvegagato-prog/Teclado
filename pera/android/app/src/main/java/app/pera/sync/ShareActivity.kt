@@ -13,6 +13,21 @@ import app.pera.R
 class ShareActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (intent.action == Intent.ACTION_SEND && intent.type?.startsWith("image/") == true) {
+            @Suppress("DEPRECATION")
+            val uri = intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+            if (uri != null) {
+                val app = applicationContext
+                // Se lee aquí (el permiso de lectura es de esta actividad) y se reduce en segundo plano.
+                val bytes = runCatching { contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+                if (bytes != null && bytes.size <= Images.MAX_SOURCE_BYTES) {
+                    Thread { SyncBus.localImage(app, bytes) }.start()
+                    Toast.makeText(this, R.string.share_sent, Toast.LENGTH_SHORT).show()
+                }
+            }
+            finish()
+            return
+        }
         val text = intent.takeIf { it.action == Intent.ACTION_SEND }?.getStringExtra(Intent.EXTRA_TEXT)
         if (text.isNullOrBlank()) {
             finish()

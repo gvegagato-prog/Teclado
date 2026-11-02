@@ -21,6 +21,23 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
+        <!-- Pera lee de aquí la última imagen copiada (solo apps firmadas con la misma clave). -->
+        <provider
+            android:name=".ImageProvider"
+            android:authorities="app.teclado.pera"
+            android:exported="true"
+            android:readPermission="app.pera.permission.SEND_CLIP" />
+
+        <!-- Fijadas que llegan de los demás teclados de la familia Pera, a través de Pera. -->
+        <receiver
+            android:name=".PinsReceiver"
+            android:exported="true"
+            android:permission="app.pera.permission.SEND_CLIP">
+            <intent-filter>
+                <action android:name="app.teclado.action.PINS" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".TecladoService"
             android:exported="true"

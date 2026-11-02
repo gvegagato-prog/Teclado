@@ -32,6 +32,43 @@ class SyncStore(context: Context) {
         get() = (Msg.decode(prefs.getString("nets", "{\"t\":\"nets\",\"nets\":[]}")!!.toByteArray()) as? Msg.Nets)?.nets.orEmpty()
         set(v) = prefs.edit().putString("nets", String(Msg.Nets(v).encode())).apply()
 
+    var pinsEnabled: Boolean
+        get() = prefs.getBoolean("pins_on", true)
+        set(v) = prefs.edit().putBoolean("pins_on", v).apply()
+
+    /** Última imagen copiada en la familia (cabecera aquí; los bytes en Images). */
+    @get:Synchronized
+    val image: Msg.Img?
+        get() {
+            val id = prefs.getString("img_id", null) ?: return null
+            val data = Images.load(app, id) ?: return null
+            return Msg.Img(id, prefs.getLong("img_ts", 0), prefs.getString("img_from", "?")!!, "image/jpeg", data)
+        }
+
+    @Synchronized
+    fun setImage(img: Msg.Img) {
+        Images.save(app, img)
+        prefs.edit().putString("img_id", img.id).putLong("img_ts", img.ts).putString("img_from", img.from).apply()
+    }
+
+    /** Marca de tiempo e id de lo último copiado (texto o imagen): gana siempre lo más reciente. */
+    val latestTs: Long get() = maxOf(clip?.ts ?: 0, prefs.getLong("img_ts", 0))
+    val latestId: String?
+        get() = if ((clip?.ts ?: 0) >= prefs.getLong("img_ts", 0)) clip?.id else prefs.getString("img_id", null)
+
+    /** Lo último copiado, sea texto o imagen. */
+    val latest: Msg?
+        get() {
+            val c = clip
+            val imgTs = prefs.getLong("img_ts", 0)
+            return if (c != null && c.ts >= imgTs) c else image ?: c
+        }
+
+    @get:Synchronized @set:Synchronized
+    var pins: Msg.Pins?
+        get() = prefs.getString("pins", null)?.let { Msg.decode(it.toByteArray()) as? Msg.Pins }
+        set(v) = prefs.edit().putString("pins", v?.let { String(it.encode()) }).apply()
+
     /** Redes que este dispositivo ya ha aplicado (para no repetir). Clave: ssid|pass|sec. */
     fun applied(w: Protocol.Wifi) = prefs.getStringSet("applied", emptySet())!!.contains(key(w))
 
@@ -80,6 +117,9 @@ class SyncStore(context: Context) {
     companion object {
         /** Último texto que Pera ha escrito en el portapapeles (para no reenviarlo como copia nueva). */
         @Volatile var lastApplied: String? = null
+
+        /** Huella de la última imagen que Pera ha puesto en el portapapeles (mismo motivo). */
+        @Volatile var lastAppliedImage: String? = null
 
         fun newClip(text: String, from: String) =
             Msg.Clip(java.util.UUID.randomUUID().toString(), System.currentTimeMillis(), from, text)

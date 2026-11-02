@@ -26,6 +26,13 @@
         android:name="app.pera.permission.SEND_CLIP"
         android:protectionLevel="signature" />
 
+    <uses-permission android:name="app.pera.permission.SEND_CLIP" />
+
+    <!-- Para leer las imágenes que deja Teclado y pasarle los fijados. -->
+    <queries>
+        <package android:name="app.teclado" />
+    </queries>
+
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
     <application
@@ -100,6 +107,8 @@
             android:permission="app.pera.permission.SEND_CLIP">
             <intent-filter>
                 <action android:name="app.pera.action.CLIP" />
+                <action android:name="app.pera.action.IMAGE" />
+                <action android:name="app.pera.action.PINS" />
             </intent-filter>
         </receiver>
 
@@ -120,6 +129,7 @@
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
+                <data android:mimeType="image/*" />
             </intent-filter>
         </activity>
 
@@ -131,6 +141,13 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- Imagen recibida de la familia, para pegarla (solo con el permiso que da el portapapeles). -->
+        <provider
+            android:name=".sync.ClipProvider"
+            android:authorities="app.pera.clip"
+            android:exported="false"
+            android:grantUriPermissions="true" />
 
         <!-- Necesario para que Shizuku entregue su binder a Pera. -->
         <provider

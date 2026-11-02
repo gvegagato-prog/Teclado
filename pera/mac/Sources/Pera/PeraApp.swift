@@ -12,7 +12,7 @@ struct PeraApp: App {
         MenuBarExtra {
             MenuContent(model: model, family: family)
         } label: {
-            Image(systemName: model.symbol)
+            Image(nsImage: PearIcon.image(active: model.on, busy: model.busy))
         }
         .menuBarExtraStyle(.menu)
     }

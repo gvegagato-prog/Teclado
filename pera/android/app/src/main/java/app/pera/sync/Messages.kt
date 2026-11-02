@@ -12,6 +12,9 @@ import org.json.JSONObject
  *  - clip:  último texto copiado en algún dispositivo.
  *  - nets:  redes Wi-Fi conocidas por la familia (nombre, contraseña, seguridad).
  *  - here:  la red a la que está conectado el móvil ahora mismo (o ninguna): los demás se unen a ella.
+ *  - img:   última imagen copiada. Binario para no inflar con base64:
+ *           [0x01][longitud de la cabecera u16][cabecera JSON {"t":"img","id","ts","from","mime"}][bytes].
+ *  - pins:  textos fijados del teclado ({"ts", "items":[{"x": texto, "t": título}]}); gana el más reciente.
  */
 sealed class Msg {
     data class Hello(val device: String, val clipTs: Long) : Msg()
@@ -19,9 +22,28 @@ sealed class Msg {
     data class Nets(val nets: List<Protocol.Wifi>) : Msg()
     data class Here(val net: Protocol.Wifi?) : Msg()
 
+    class Img(val id: String, val ts: Long, val from: String, val mime: String, val data: ByteArray) : Msg() {
+        override fun equals(other: Any?) = other is Img && id == other.id && ts == other.ts &&
+            from == other.from && mime == other.mime && data.contentEquals(other.data)
+        override fun hashCode() = id.hashCode()
+    }
+
+    data class Pin(val text: String, val title: String)
+    data class Pins(val ts: Long, val items: List<Pin>) : Msg()
+
     fun encode(): ByteArray {
+        if (this is Img) {
+            val hdr = JSONObject().put("t", "img").put("id", id).put("ts", ts).put("from", from).put("mime", mime)
+                .toString().toByteArray(Charsets.UTF_8)
+            return java.nio.ByteBuffer.allocate(3 + hdr.size + data.size)
+                .put(BINARY).putShort(hdr.size.toShort()).put(hdr).put(data).array()
+        }
         val o = JSONObject()
         when (this) {
+            is Img -> Unit
+            is Pins -> o.put("t", "pins").put("ts", ts).put(
+                "items", JSONArray().apply { items.forEach { put(JSONObject().put("x", it.text).put("t", it.title)) } },
+            )
             is Hello -> o.put("t", "hello").put("dev", device).put("clip", clipTs)
             is Clip -> o.put("t", "clip").put("id", id).put("ts", ts).put("from", from).put("text", text)
             is Nets -> o.put("t", "nets").put("nets", JSONArray().apply { nets.forEach { put(it.toJson()) } })
@@ -32,7 +54,10 @@ sealed class Msg {
 
     companion object {
         /** null si el mensaje no se entiende (p. ej. de una versión futura de Pera): se ignora. */
+        private const val BINARY: Byte = 1
+
         fun decode(bytes: ByteArray): Msg? = runCatching {
+            if (bytes.isNotEmpty() && bytes[0] == BINARY) return@runCatching decodeBinary(bytes)
             val o = JSONObject(String(bytes, Charsets.UTF_8))
             when (o.getString("t")) {
                 "hello" -> Hello(o.optString("dev", "?"), o.optLong("clip", 0))
@@ -42,9 +67,23 @@ sealed class Msg {
                     Nets((0 until a.length()).mapNotNull { wifiFromJson(a.getJSONObject(it)) })
                 }
                 "here" -> Here(if (o.isNull("net")) null else wifiFromJson(o.getJSONObject("net")))
+                "pins" -> {
+                    val a = o.getJSONArray("items")
+                    Pins(o.getLong("ts"), (0 until a.length()).map { a.getJSONObject(it).let { p -> Pin(p.getString("x"), p.optString("t", "")) } })
+                }
                 else -> null
             }
         }.getOrNull()
+
+        private fun decodeBinary(bytes: ByteArray): Msg? {
+            val b = java.nio.ByteBuffer.wrap(bytes, 1, bytes.size - 1)
+            val len = b.short.toInt() and 0xFFFF
+            if (3 + len > bytes.size) return null
+            val h = JSONObject(String(bytes, 3, len, Charsets.UTF_8))
+            if (h.optString("t") != "img") return null // otro binario de una versión futura
+            return Img(h.getString("id"), h.getLong("ts"), h.optString("from", "?"), h.optString("mime", "image/jpeg"),
+                bytes.copyOfRange(3 + len, bytes.size))
+        }
 
         private fun Protocol.Wifi.toJson() = JSONObject()
             .put("ssid", ssid)
@@ -90,4 +129,11 @@ object SyncRules {
     /** ¿Hay que aceptar este texto? Solo si es más reciente y no es el mismo que ya tenemos. */
     fun acceptClip(current: Msg.Clip?, incoming: Msg.Clip): Boolean =
         current == null || (incoming.ts > current.ts && incoming.id != current.id)
+
+    /** Lo copiado más reciente gana, sea texto o imagen ([latestTs]/[latestId] = lo último que tenemos). */
+    fun acceptCopy(latestTs: Long, latestId: String?, ts: Long, id: String): Boolean =
+        id != latestId && ts > latestTs
+
+    /** Fijados: gana la lista editada más recientemente. */
+    fun acceptPins(current: Msg.Pins?, incoming: Msg.Pins): Boolean = current == null || incoming.ts > current.ts
 }

@@ -3,10 +3,17 @@
 Funciones al estilo Apple para tu móvil Android, tu tablet y tu Mac:
 
 1. **Datos del móvil sin sacarlo del bolsillo** (como el «Compartir Internet instantáneo» del iPhone).
-2. **Portapapeles compartido**: lo último que copias en un dispositivo se puede pegar en los demás
-   (como el «Portapapeles universal»).
+2. **Portapapeles compartido**: lo último que copias (texto **o foto**) en un dispositivo se puede pegar
+   en los demás (como el «Portapapeles universal»).
 3. **Redes Wi-Fi compartidas**: la red a la que se une un dispositivo de la familia la conocen los demás
    (como las contraseñas Wi-Fi de iCloud).
+
+4. **Fijados del teclado compartidos**: los textos que fijas en Teclado aparecen en el Teclado de tus otros
+   dispositivos.
+
+La app es una pantalla de tarjetas, una por función: **verde suave** si está activa, **rojiza** si no. Al
+tocar una se abre su ficha, con el interruptor de la función y cada cosa que necesita (con su botón para
+arreglarla).
 
 Todo viaja por **Bluetooth LE cifrado** entre tus dispositivos emparejados. No hay servidores ni cuentas.
 
@@ -84,8 +91,18 @@ Si el móvil no está, la tablet y el Mac no se sincronizan entre ellos.
 | **Mac** | ✓ | ✓ |
 
 - No se sincroniza lo que los gestores de contraseñas marcan como sensible (Android y Mac).
-- Solo texto, hasta 32.000 caracteres. Imágenes y archivos, no.
+- Texto (hasta 32.000 caracteres) y **fotos**. Las fotos se reducen antes de enviarlas (lado largo de
+  1600 px, JPEG): unos 150-300 KB, que por Bluetooth LE tardan del orden de **10-30 segundos** (estimación;
+  depende de los dispositivos). Apple es más rápido porque usa una Wi-Fi directa entre dispositivos.
+- En Android, las fotos copiadas las detecta **Teclado**, o se envían con **Compartir → Pera**. Al llegar a
+  otro Android se pegan como imagen normal. Archivos que no sean imágenes, no.
 - Gana lo más reciente (por hora de copia).
+
+### Fijados del teclado
+
+Cuando fijas, quitas o titulas una copia en Teclado, la lista va a la familia y sustituye a la de los
+demás Teclados: **gana el último cambio**. La primera vez se juntan con los fijados que ya tuvieras, para
+no perder ninguno. Necesita Teclado en cada Android (el Mac no tiene Teclado).
 
 ### Redes Wi-Fi
 

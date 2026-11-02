@@ -28,14 +28,27 @@ class SyncHub(private val context: Context, private val transport: Transport) {
         when (msg) {
             is Msg.Hello -> {
                 Log.i(TAG, "Hola de ${msg.device}")
-                val clip = store.clip
-                if (store.clipEnabled && clip != null && clip.ts > msg.clipTs) transport.send(peer, clip)
+                // Lo último copiado (texto o imagen), si el cliente no lo tiene.
+                val latest = store.latest
+                if (store.clipEnabled && latest != null && store.latestTs > msg.clipTs) transport.send(peer, latest)
+                if (store.pinsEnabled) store.pins?.let { transport.send(peer, it) }
                 if (store.wifiEnabled) {
                     transport.send(peer, Msg.Nets(store.nets))
                     transport.send(peer, Msg.Here(store.here))
                 }
             }
-            is Msg.Clip -> if (store.clipEnabled && SyncRules.acceptClip(store.clip, msg)) {
+            is Msg.Img -> if (store.clipEnabled && SyncRules.acceptCopy(store.latestTs, store.latestId, msg.ts, msg.id)) {
+                store.noteClip("imagen recibida de ${msg.from} (${msg.data.size / 1024} KB)")
+                store.setImage(msg)
+                SyncBus.applyImage(context, msg)
+                broadcast(msg, except = peer)
+            }
+            is Msg.Pins -> if (store.pinsEnabled && SyncRules.acceptPins(store.pins, msg)) {
+                store.pins = msg
+                SyncBus.applyPins(context, msg)
+                broadcast(msg, except = peer)
+            }
+            is Msg.Clip -> if (store.clipEnabled && SyncRules.acceptCopy(store.latestTs, store.latestId, msg.ts, msg.id)) {
                 store.noteClip("recibida de ${msg.from}")
                 store.clip = msg
                 SyncBus.applyClip(context, msg.text)
@@ -51,6 +64,15 @@ class SyncHub(private val context: Context, private val transport: Transport) {
                 }
             }
         }
+    }
+
+    /** Imagen o fijados del propio móvil (ya guardados por SyncBus): se reparten. */
+    fun onLocalMsg(msg: Msg) = worker.execute {
+        if (msg is Msg.Img) {
+            val n = transport.peers().size
+            store.noteClip(if (n == 0) "imagen copiada; ningún dispositivo conectado" else "imagen enviada a $n dispositivo(s)")
+        }
+        broadcast(msg, except = null)
     }
 
     /** Copia hecha en el propio móvil. */

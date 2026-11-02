@@ -11,8 +11,8 @@ import java.nio.ByteBuffer
  */
 object Framing {
     const val HEADER = 6
-    /** Límite de un mensaje completo (un texto copiado muy largo no se sincroniza). */
-    const val MAX_MESSAGE = 128 * 1024
+    /** Límite de un mensaje completo (una imagen ya reducida cabe de sobra). */
+    const val MAX_MESSAGE = 2 * 1024 * 1024
 
     fun split(msgId: Int, data: ByteArray, maxFrame: Int): List<ByteArray> {
         require(maxFrame > HEADER) { "Fragmento demasiado pequeño" }

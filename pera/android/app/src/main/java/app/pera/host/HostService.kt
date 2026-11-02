@@ -88,6 +88,7 @@ class HostService : Service() {
         )
         hub = SyncHub(this, transport)
         SyncBus.onLocalClip = { hub.onLocalClip(it) }
+        SyncBus.onLocalMsg = { hub.onLocalMsg(it) }
         clipWatcher = ClipWatcher(this).also { it.begin() }
 
         val filter = IntentFilter().apply {
@@ -118,7 +119,8 @@ class HostService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
     override fun onDestroy() {
-        if (SyncBus.onLocalClip != null) SyncBus.onLocalClip = null
+        SyncBus.onLocalClip = null
+        SyncBus.onLocalMsg = null
         clipWatcher.end()
         Shizuku.removeBinderReceivedListener(shizukuReady)
         main.removeCallbacks(periodicRefresh)
@@ -369,7 +371,8 @@ class HostService : Service() {
         override fun send(peer: String, msg: Msg) {
             val p = peers[peer] ?: return
             synchronized(p) {
-                val frames = Framing.split(p.nextMsgId++ and 0xFFFF, msg.encode(), p.mtu - 3)
+                val frames = runCatching { Framing.split(p.nextMsgId++ and 0xFFFF, msg.encode(), p.mtu - 3) }
+                    .getOrElse { Log.w(TAG, "Mensaje demasiado grande para este cliente", it); return }
                 p.outbox.addAll(frames)
                 pump(p)
             }

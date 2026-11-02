@@ -37,6 +37,48 @@ object SyncBus {
         }.onFailure { Log.w("PeraSync", "setPrimaryClip", it) }
     }
 
+    @Volatile var onLocalMsg: ((Msg) -> Unit)? = null
+
+    /**
+     * Imagen copiada aquí (de Teclado o de «Compartir»): se reduce y se reparte. Bloqueante (decodifica
+     * la imagen): llamar desde un hilo de fondo.
+     */
+    fun localImage(context: Context, source: ByteArray) {
+        val store = SyncStore(context)
+        if (!store.clipEnabled) return
+        val jpeg = Images.reduce(source) ?: return store.noteClip("imagen no reconocida")
+        if (Images.hash(jpeg) == SyncStore.lastAppliedImage || Images.hash(source) == SyncStore.lastAppliedImage) return
+        val img = Msg.Img(java.util.UUID.randomUUID().toString(), System.currentTimeMillis(), store.deviceName, "image/jpeg", jpeg)
+        store.setImage(img)
+        store.noteClip("imagen copiada aquí (${jpeg.size / 1024} KB)")
+        onLocalMsg?.invoke(img) // si no hay servicio aún, sale al conectar por ser lo más reciente
+    }
+
+    /** Fijados del teclado de este dispositivo, editados aquí. */
+    fun localPins(context: Context, pins: Msg.Pins) {
+        val store = SyncStore(context)
+        if (!store.pinsEnabled || !SyncRules.acceptPins(store.pins, pins)) return
+        store.pins = pins
+        onLocalMsg?.invoke(pins)
+    }
+
+    /** Pone la imagen en el portapapeles: al pegar, la app lee el archivo a través de ClipProvider. */
+    fun applyImage(context: Context, img: Msg.Img) {
+        SyncStore.lastAppliedImage = Images.hash(img.data)
+        runCatching {
+            val cm = context.getSystemService(ClipboardManager::class.java)
+            cm.setPrimaryClip(ClipData.newUri(context.contentResolver, "Pera", Images.uri(img.id)))
+        }.onFailure { Log.w("PeraSync", "setPrimaryClip(imagen)", it) }
+    }
+
+    /** Entrega los fijados de la familia a Teclado (receptor protegido con el permiso de firma). */
+    fun applyPins(context: Context, pins: Msg.Pins) {
+        val intent = android.content.Intent("app.teclado.action.PINS").setPackage(TECLADO_PACKAGE)
+            .putExtra("pins", String(pins.encode()))
+            .addFlags(android.content.Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
+        runCatching { context.sendBroadcast(intent, "app.pera.permission.SEND_CLIP") }
+    }
+
     fun tecladoIsKeyboard(context: Context): Boolean =
         Settings.Secure.getString(context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
             ?.startsWith("$TECLADO_PACKAGE/") == true

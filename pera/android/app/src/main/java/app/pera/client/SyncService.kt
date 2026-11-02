@@ -54,6 +54,7 @@ class SyncService : Service() {
             },
         )
         SyncBus.onLocalClip = { text -> worker.execute { localClip(text) } }
+        SyncBus.onLocalMsg = { m -> link.send(m); if (m is Msg.Img) noteSent("imagen", m.data.size) }
         clipWatcher = ClipWatcher(this).also { it.begin() }
         rikka.shizuku.Shizuku.addBinderReceivedListenerSticky(shizukuReady)
         main.postDelayed(retry, 30_000)
@@ -67,6 +68,7 @@ class SyncService : Service() {
         main.removeCallbacks(retry)
         rikka.shizuku.Shizuku.removeBinderReceivedListener(shizukuReady)
         SyncBus.onLocalClip = null
+        SyncBus.onLocalMsg = null
         clipWatcher.end()
         link.stop()
         worker.shutdownNow()
@@ -76,9 +78,11 @@ class SyncService : Service() {
     }
 
     private fun greet() {
-        link.send(Msg.Hello(store.deviceName, store.clip?.ts ?: 0))
+        link.send(Msg.Hello(store.deviceName, store.latestTs))
         // Lo copiado aquí mientras el móvil no estaba: el móvil se queda con lo más reciente.
-        store.clip?.takeIf { it.from == store.deviceName }?.let { link.send(it) }
+        store.latest?.takeIf { (it as? Msg.Clip)?.from == store.deviceName || (it as? Msg.Img)?.from == store.deviceName }
+            ?.let { link.send(it) }
+        if (store.pinsEnabled) store.pins?.let { link.send(it) }
         if (store.wifiEnabled && Shell.ready()) {
             val own = Shell.savedNetworks()
             if (own.isNotEmpty()) link.send(Msg.Nets(own))
@@ -87,7 +91,16 @@ class SyncService : Service() {
 
     private fun handle(m: Msg) {
         when (m) {
-            is Msg.Clip -> if (store.clipEnabled && SyncRules.acceptClip(store.clip, m)) {
+            is Msg.Img -> if (store.clipEnabled && SyncRules.acceptCopy(store.latestTs, store.latestId, m.ts, m.id)) {
+                store.noteClip("imagen recibida de ${m.from} (${m.data.size / 1024} KB)")
+                store.setImage(m)
+                SyncBus.applyImage(this, m)
+            }
+            is Msg.Pins -> if (store.pinsEnabled && SyncRules.acceptPins(store.pins, m)) {
+                store.pins = m
+                SyncBus.applyPins(this, m)
+            }
+            is Msg.Clip -> if (store.clipEnabled && SyncRules.acceptCopy(store.latestTs, store.latestId, m.ts, m.id)) {
                 store.noteClip("recibida de ${m.from}")
                 store.clip = m
                 SyncBus.applyClip(this, m.text)
@@ -172,6 +185,11 @@ class SyncService : Service() {
             Prefs.setClientLastOn(this, on)
             HotspotTileService.refresh(this)
         }
+    }
+
+    private fun noteSent(what: String, bytes: Int) {
+        store.noteClip(if (link.connected) "$what enviada al móvil (${bytes / 1024} KB; por Bluetooth tarda unos segundos)"
+            else "$what copiada aquí; sin conexión con el móvil (se enviará al conectar)")
     }
 
     private fun localClip(text: String) {

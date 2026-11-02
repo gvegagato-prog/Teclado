@@ -43,6 +43,25 @@ final class SyncTests: XCTestCase {
         XCTAssertNil(none)
     }
 
+    /// Mismo formato binario que Android (Msg.Img en Messages.kt): 0x01, u16 de cabecera, JSON, bytes.
+    func testImageBinaryRoundTripAndLayout() {
+        let data = Data((0..<300_000).map { UInt8(truncatingIfNeeded: $0 &* 7) })
+        let img = Msg.Img(id: "i1", ts: 1_730_000_000_000, from: "Mac", mime: "image/jpeg", data: data)
+        let bytes = img.encode()
+        XCTAssertEqual(bytes.first, 1)
+        let hdrLen = Int(bytes[1]) << 8 | Int(bytes[2])
+        let hdr = String(data: bytes.subdata(in: 3 ..< 3 + hdrLen), encoding: .utf8) ?? ""
+        XCTAssertTrue(hdr.contains("\"t\":\"img\""))
+        guard case let .img(back)? = Msg.decode(bytes) else { return XCTFail() }
+        XCTAssertEqual(back, img)
+        // Y a través del troceado.
+        let a = Framing.Assembler()
+        var out: Data?
+        for f in Framing.split(msgId: 3, data: bytes, maxFrame: 244) { out = a.add(f) ?? out }
+        guard let whole = out, case let .img(viaFrames)? = Msg.decode(whole) else { return XCTFail() }
+        XCTAssertEqual(viaFrames, img)
+    }
+
     /// JSON tal como lo escribe Android (org.json).
     func testDecodesAndroidJson() {
         let json = #"{"t":"clip","id":"x1","ts":1730000000123,"from":"Galaxy","text":"línea\nnueva"}"#

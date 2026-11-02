@@ -96,9 +96,13 @@ class HubLink(
     fun send(msg: Msg) = handler.post {
         val c = msgIn ?: return@post
         if (!connected) return@post
-        Framing.split(nextMsgId++ and 0xFFFF, msg.encode(), mtu - 3).forEach { frame ->
-            enqueue { write(c, frame) }
-        }
+        val bytes = msg.encode()
+        val frames = runCatching { Framing.split(nextMsgId++ and 0xFFFF, bytes, mtu - 3) }.getOrElse { return@post }
+        // Envíos grandes (imágenes): conexión de alta prioridad (intervalo corto) mientras duran.
+        val big = bytes.size > 4096
+        if (big) enqueue { gatt?.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH); false }
+        frames.forEach { frame -> enqueue { write(c, frame) } }
+        if (big) enqueue { gatt?.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED); false }
     }
 
     // ---------- Escaneo ----------
@@ -214,6 +218,7 @@ class HubLink(
     // ---------- Callbacks (llegan en el hilo del handler) ----------
 
     private var subscribeAttempts = 0
+    private var fastReceive = false
 
     private val callback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
@@ -300,7 +305,18 @@ class HubLink(
                 return
             }
             if (c.uuid != Protocol.MSG_OUT) return
-            assembler.add(value)?.let { Msg.decode(it) }?.let(onMessage)
+            // Mensaje de muchos fragmentos (una imagen): prioridad alta hasta que termine.
+            val total = if (value.size >= Framing.HEADER) ((value[4].toInt() and 0xFF) shl 8) or (value[5].toInt() and 0xFF) else 0
+            if (total > 20 && !fastReceive) {
+                fastReceive = true
+                g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
+            }
+            val whole = assembler.add(value) ?: return
+            if (fastReceive) {
+                fastReceive = false
+                g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED)
+            }
+            Msg.decode(whole)?.let(onMessage)
         }
 
         @Deprecated("API < 33")

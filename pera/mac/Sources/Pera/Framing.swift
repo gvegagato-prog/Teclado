@@ -4,7 +4,7 @@ import Foundation
 /// fragmento = [id u16][índice u16][total u16][datos…] en big endian.
 enum Framing {
     static let header = 6
-    static let maxMessage = 128 * 1024
+    static let maxMessage = 2 * 1024 * 1024 // una imagen ya reducida cabe de sobra
 
     static func split(msgId: UInt16, data: Data, maxFrame: Int) -> [Data] {
         let chunk = max(1, maxFrame - header)

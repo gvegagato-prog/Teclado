@@ -97,6 +97,42 @@ class SyncTest {
     }
 
     @Test
+    fun imageAndPinsRoundTrip() {
+        val jpeg = Random(5).nextBytes(300_000)
+        val img = Msg.Img("i1", 1730000000000L, "Mac", "image/jpeg", jpeg)
+        val back = Msg.decode(img.encode())
+        assertEquals(img, back)
+        // Atraviesa el troceado como un mensaje cualquiera.
+        val a = Framing.Assembler()
+        var out: ByteArray? = null
+        Framing.split(1, img.encode(), 244).forEach { out = a.add(it) ?: out }
+        assertEquals(img, Msg.decode(out!!))
+
+        val pins = Msg.Pins(42L, listOf(Msg.Pin("mi correo", "Correo"), Msg.Pin("línea\nnueva «ñ»", "")))
+        assertEquals(pins, Msg.decode(pins.encode()))
+    }
+
+    /** Cabecera binaria fija: la misma que espera el Mac (SyncTests.swift). */
+    @Test
+    fun imageBinaryLayout() {
+        val bytes = Msg.Img("a", 1, "b", "image/jpeg", byteArrayOf(9, 8)).encode()
+        assertEquals(1.toByte(), bytes[0])
+        val hdrLen = ((bytes[1].toInt() and 0xFF) shl 8) or (bytes[2].toInt() and 0xFF)
+        val hdr = String(bytes, 3, hdrLen)
+        assertTrue(hdr.contains("\"t\":\"img\""))
+        assertArrayEquals(byteArrayOf(9, 8), bytes.copyOfRange(3 + hdrLen, bytes.size))
+    }
+
+    @Test
+    fun latestCopyWinsAcrossTextAndImages() {
+        assertTrue(SyncRules.acceptCopy(100, "x", 101, "y"))
+        assertFalse(SyncRules.acceptCopy(100, "x", 99, "y"))
+        assertFalse(SyncRules.acceptCopy(100, "x", 200, "x"))
+        assertTrue(SyncRules.acceptPins(null, Msg.Pins(1, emptyList())))
+        assertFalse(SyncRules.acceptPins(Msg.Pins(5, emptyList()), Msg.Pins(4, emptyList())))
+    }
+
+    @Test
     fun unknownMessagesAreIgnored() {
         assertNull(Msg.decode("""{"t":"futuro","x":1}""".toByteArray()))
         assertNull(Msg.decode("basura".toByteArray()))

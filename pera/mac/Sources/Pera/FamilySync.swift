@@ -50,16 +50,28 @@ final class FamilySync: ObservableObject {
     // MARK: - Mensajes
 
     private func greet() {
-        link.send(.hello(device: deviceName, clipTs: clip?.ts ?? 0))
+        link.send(.hello(device: deviceName, clipTs: latestTs))
         // Lo copiado aquí mientras el móvil no estaba: el móvil se queda con lo más reciente.
-        if let c = clip, c.from == deviceName { link.send(.clip(c)) }
+        if imageTs > (clip?.ts ?? 0) {
+            if let img = lastImage, img.from == deviceName { link.send(.img(img)) }
+        } else if let c = clip, c.from == deviceName {
+            link.send(.clip(c))
+        }
     }
 
     private func handle(_ msg: Msg) {
         switch msg {
+        case let .img(i):
+            guard clipEnabled, i.ts > latestTs, i.id != lastImage?.id, let image = NSImage(data: i.data) else { return }
+            lastImage = i
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            pb.writeObjects([image])
+            ownChange = pb.changeCount
+            lastChange = pb.changeCount
         case let .clip(c):
             guard clipEnabled else { return }
-            if let current = clip, !(c.ts > current.ts && c.id != current.id) { return }
+            if c.ts <= latestTs || c.id == clip?.id { return }
             clip = c
             let pb = NSPasteboard.general
             pb.clearContents()
@@ -95,12 +107,65 @@ final class FamilySync: ObservableObject {
         // Convenio de nspasteboard.org: los gestores de contraseñas marcan así lo que copian.
         let types = pb.types ?? []
         let secret = types.contains { $0.rawValue == "org.nspasteboard.ConcealedType" || $0.rawValue == "org.nspasteboard.TransientType" }
-        guard !secret, let text = pb.string(forType: .string), !text.isEmpty, text.count <= Self.maxClipChars else { return }
+        guard !secret else { return }
+        // Imagen copiada (captura, foto, imagen de una web…): se reduce y se envía.
+        let imageTypes: [NSPasteboard.PasteboardType] = [.png, .tiff, NSPasteboard.PasteboardType("public.jpeg")]
+        if pb.availableType(from: imageTypes) != nil, pb.string(forType: .string) == nil,
+           let image = NSImage(pasteboard: pb), let jpeg = Self.reduce(image) {
+            let i = Msg.Img.new(jpeg, from: deviceName)
+            lastImage = i
+            link.send(.img(i))
+            return
+        }
+        guard let text = pb.string(forType: .string), !text.isEmpty, text.count <= Self.maxClipChars else { return }
         if text == clip?.text { return }
         let c = Msg.Clip.new(text, from: deviceName)
         clip = c
         link.send(.clip(c))
     }
+
+    /// Reduce una imagen a JPEG con el lado largo de 1600 px (Bluetooth LE es lento: decenas de KB/s).
+    static func reduce(_ image: NSImage) -> Data? {
+        guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        let scale = min(1, 1600 / Double(max(cg.width, cg.height)))
+        let w = max(1, Int(Double(cg.width) * scale)), h = max(1, Int(Double(cg.height) * scale))
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        let rect = CGRect(x: 0, y: 0, width: w, height: h)
+        ctx.setFillColor(CGColor(gray: 1, alpha: 1)) // fondo blanco para las transparencias
+        ctx.fill(rect)
+        ctx.interpolationQuality = .high
+        ctx.draw(cg, in: rect)
+        guard let out = ctx.makeImage() else { return nil }
+        return NSBitmapImageRep(cgImage: out).representation(using: .jpeg, properties: [.compressionFactor: 0.8])
+    }
+
+    /// Última imagen copiada (en Application Support, para enviarla al reconectar si es la más reciente).
+    private var lastImage: Msg.Img? {
+        get {
+            guard let d = try? Data(contentsOf: Self.imageFile), case let .img(i)? = Msg.decode(d) else { return nil }
+            return i
+        }
+        set {
+            if let i = newValue {
+                try? FileManager.default.createDirectory(at: Self.imageFile.deletingLastPathComponent(),
+                                                         withIntermediateDirectories: true)
+                try? Msg.img(i).encode().write(to: Self.imageFile)
+                defaults.set(i.ts, forKey: "imageTs")
+            }
+        }
+    }
+
+    private static var imageFile: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Pera/ultima-imagen.bin")
+    }
+
+    private var imageTs: Int64 { (defaults.object(forKey: "imageTs") as? NSNumber)?.int64Value ?? 0 }
+
+    /// Lo último copiado en la familia, sea texto o imagen.
+    private var latestTs: Int64 { max(clip?.ts ?? 0, imageTs) }
 
     private var clip: Msg.Clip? {
         get {

@@ -40,6 +40,34 @@ class ClipboardTest {
         ShadowLooper.idleMainLooper()
     }
 
+    @Test fun pinnedSyncNewestWinsAndFirstSyncMerges() {
+        val f = File(ctx.cacheDir, "pins.json").also { it.delete() }
+        val st = ClipStore(f)
+        st.add("local"); st.pin(0)
+        val localTs = st.pinsTs
+        assertTrue(localTs > 0)
+        // Llega una lista más vieja: no se toca.
+        assertEquals(false, st.replacePinned(listOf(ClipStore.Pinned("viejo", "")), localTs - 1))
+        assertEquals(listOf("local"), st.pinned.map { it.text })
+        // Llega una más nueva: sustituye (otro teclado borró «local» y fijó «nuevo»).
+        assertTrue(st.replacePinned(listOf(ClipStore.Pinned("nuevo", "Título")), localTs + 10))
+        assertEquals(listOf("nuevo"), st.pinned.map { it.text })
+        assertEquals("Título", st.pinned[0].title)
+        st.flush()
+        val again = ClipStore(f).also { it.load() }
+        assertEquals(localTs + 10, again.pinsTs)
+        assertEquals(listOf("nuevo"), again.pinned.map { it.text })
+
+        // Un teclado que nunca sincronizó y ya tenía fijadas: se combinan y la unión pasa a ser la más nueva.
+        val g = File(ctx.cacheDir, "pins2.json").also { it.delete() }
+        g.writeText("""{"history":[],"pinned":[{"x":"mía","t":""}]}""")
+        val old = ClipStore(g).also { it.load() }
+        assertEquals(0L, old.pinsTs)
+        assertTrue(old.replacePinned(listOf(ClipStore.Pinned("de la familia", "")), 500))
+        assertEquals(listOf("de la familia", "mía"), old.pinned.map { it.text })
+        assertTrue(old.pinsTs > 500)
+    }
+
     @Test fun storeKeepsLast50NewestFirstWithoutDuplicates() {
         val f = File(ctx.cacheDir, "c1.json").also { it.delete() }
         val s = ClipStore(f)

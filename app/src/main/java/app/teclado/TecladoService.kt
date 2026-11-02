@@ -73,9 +73,17 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     private fun captureClip() {
         try {
             val clip = clipboard().primaryClip ?: return
-            if (clip.itemCount == 0 || !clip.description.hasMimeType("text/*")) return
+            if (clip.itemCount == 0) return
             // Los gestores de contraseñas marcan lo que copian como sensible: no se guarda.
             if (clip.description.extras?.getBoolean(SENSITIVE_EXTRA, false) == true) return
+            // Imagen copiada: se pasa a Pera (si está) para tu tablet y tu Mac. El historial es solo de texto.
+            val first = clip.getItemAt(0)
+            if (clip.description.hasMimeType("image/*") && first.uri != null && !PeraBridge.isFromPera(first.uri)) {
+                val uri = first.uri
+                Thread({ PeraBridge.sendImage(this, uri) }, "teclado-pera-img").start()
+                return
+            }
+            if (!clip.description.hasMimeType("text/*")) return
             val item = clip.getItemAt(0)
             if (item.text == null && item.uri != null) return
             val text = item.coerceToText(this)?.toString() ?: return
@@ -84,6 +92,14 @@ open class TecladoService : InputMethodService(), KeyboardListener {
         } catch (_: Exception) {
             // sin acceso al portapapeles (p. ej. la app no es el teclado activo): se ignora
         }
+    }
+
+    /** Fijadas que llegan de otro teclado de la familia Pera (en el hilo principal). */
+    fun applyRemotePins(items: List<ClipStore.Pinned>, ts: Long) {
+        if (editingTitle()) return // no se pisa un título a medio escribir; llegará en la próxima edición
+        if (!clipStore.replacePinned(items, ts)) return
+        pushClips()
+        if (clipStore.pinsTs != ts) PeraBridge.sendPins(this, clipStore) // se combinaron: se reparte la unión
     }
 
     private fun pasteText(text: String) {
@@ -119,8 +135,8 @@ open class TecladoService : InputMethodService(), KeyboardListener {
                 pasteText(t)
             }
             ClipAction.DELETE -> { clipStore.remove(index); pushClips() }
-            ClipAction.UNPIN -> { clipStore.unpin(index); pushClips() }
-            ClipAction.PIN -> if (clipStore.pin(index)) { pushClips(); startTitleEdit(0) }
+            ClipAction.UNPIN -> { clipStore.unpin(index); pushClips(); PeraBridge.sendPins(this, clipStore) }
+            ClipAction.PIN -> if (clipStore.pin(index)) { pushClips(); startTitleEdit(0); PeraBridge.sendPins(this, clipStore) }
             ClipAction.EDIT_TITLE -> startTitleEdit(index)
         }
     }
@@ -166,6 +182,7 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     override fun onTitleOk() {
         if (!editingTitle()) return
         clipStore.setTitle(titleIdx, titleBuf.toString())
+        PeraBridge.sendPins(this, clipStore)
         endTitleEdit()
     }
 
@@ -175,6 +192,7 @@ open class TecladoService : InputMethodService(), KeyboardListener {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         prefs = Prefs(this)
         clipStore = ClipStore(ClipStore.fileFor(filesDir))
         clipStore.load()
@@ -308,6 +326,7 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     }
 
     override fun onDestroy() {
+        if (instance === this) instance = null
         try { clipboard().removePrimaryClipChangedListener(clipListener) } catch (_: Exception) {}
         worker.looper.quitSafely()
         super.onDestroy()
@@ -794,6 +813,10 @@ open class TecladoService : InputMethodService(), KeyboardListener {
     }
 
     companion object {
+        /** El teclado en marcha (para aplicar al momento lo que llega de Pera). */
+        @Volatile var instance: TecladoService? = null
+            private set
+
         private const val SENSITIVE_EXTRA = "android.content.extra.IS_SENSITIVE"
         private const val WORD_DELETE_AFTER = 14
         private const val BOUNDARY = "([{\"“«¿¡-"

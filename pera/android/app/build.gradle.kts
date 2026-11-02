@@ -18,8 +18,8 @@ android {
         applicationId = "app.pera"
         minSdk = 31 // Android 12: permisos de Bluetooth modernos
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.8"
+        versionCode = 9
+        versionName = "0.9"
     }
 
     signingConfigs {
@@ -47,6 +47,18 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all { t ->
+            // Opcional: jars de Robolectric ya descargados (entornos sin acceso directo a Maven Central).
+            providers.gradleProperty("robolectricDir").orNull?.let {
+                t.systemProperty("robolectric.offline", "true")
+                t.systemProperty("robolectric.dependency.dir", it)
+            }
+            providers.gradleProperty("previewDir").orNull?.let { t.systemProperty("preview.dir", it) }
+        }
+    }
 }
 
 dependencies {
@@ -56,4 +68,5 @@ dependencies {
     implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20250517")
+    testImplementation("org.robolectric:robolectric:4.17")
 }

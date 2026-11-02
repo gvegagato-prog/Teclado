@@ -22,6 +22,7 @@ final class PeraLink: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     private var timeout: DispatchWorkItem?
     private var poll: Timer?
     private var commandSent = false
+    private var foundHubId: Data?
 
     var isBusy: Bool { completion != nil }
 
@@ -115,7 +116,8 @@ final class PeraLink: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
-        guard isBusy, self.peripheral == nil else { return }
+        guard isBusy, self.peripheral == nil, PeraProtocol.isOurHub(advertisementData) else { return }
+        foundHubId = PeraProtocol.hubId(advertisementData)
         central.stopScan()
         self.peripheral = peripheral
         peripheral.delegate = self
@@ -169,6 +171,7 @@ final class PeraLink: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         if let error {
             return finish(.failure("No se pudo emparejar con el móvil: \(error.localizedDescription)"))
         }
+        PeraProtocol.rememberHub(foundHubId) // cifrado y emparejado: este es nuestro móvil
         sendCommand()
     }
 

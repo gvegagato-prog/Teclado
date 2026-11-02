@@ -34,6 +34,8 @@ jobs:
         working-directory: pera/mac
     steps:
       - uses: actions/checkout@v7
+      - name: Pruebas (troceado y mensajes, compatibles con Android)
+        run: swift test
       - name: Compilar Pera.app
         run: ./build-app.sh
       - uses: actions/upload-artifact@v7

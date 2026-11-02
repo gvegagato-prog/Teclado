@@ -22,6 +22,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Build
 import android.os.IBinder
 import android.os.ParcelUuid
@@ -31,21 +35,42 @@ import app.pera.Notifications
 import app.pera.Prefs
 import app.pera.Protocol
 import app.pera.R
+import app.pera.sync.ClipWatcher
+import app.pera.sync.Framing
+import app.pera.sync.Msg
+import app.pera.sync.SyncBus
+import app.pera.sync.SyncHub
+import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
 /**
- * Servicio permanente del móvil: anuncia Pera por Bluetooth LE y atiende las órdenes de la tablet o el Mac.
+ * Servicio permanente del móvil: anuncia Pera por Bluetooth LE, enciende el hotspot cuando se lo piden
+ * y hace de centro de la familia (portapapeles y redes Wi-Fi) para la tablet y el Mac.
  * Se arranca desde la app y, si está activado, al encender el móvil (BootReceiver).
  */
 @SuppressLint("MissingPermission") // los permisos se piden en MainActivity antes de arrancar el servicio
 class HostService : Service() {
 
+    /** Un cliente conectado (tablet o Mac). */
+    private class Peer(val device: BluetoothDevice) {
+        @Volatile var mtu = 23
+        @Volatile var stateNotify = false
+        @Volatile var msgNotify = false
+        val assembler = Framing.Assembler()
+        val outbox = ArrayDeque<ByteArray>()
+        var sending = false
+        var nextMsgId = 0
+    }
+
     private lateinit var hotspot: HotspotController
     private lateinit var bluetooth: BluetoothManager
+    private lateinit var hub: SyncHub
+    private lateinit var clipWatcher: ClipWatcher
     private var server: BluetoothGattServer? = null
     private var stateChar: BluetoothGattCharacteristic? = null
-    private val subscribers = ConcurrentHashMap.newKeySet<BluetoothDevice>()
+    private var msgOutChar: BluetoothGattCharacteristic? = null
+    private val peers = ConcurrentHashMap<String, Peer>()
     private val worker = Executors.newSingleThreadExecutor()
     @Volatile private var lastState = -1
 
@@ -59,19 +84,33 @@ class HostService : Service() {
             Notifications.HOST_ID, notification(),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
         )
+        hub = SyncHub(this, transport)
+        SyncBus.onLocalClip = { hub.onLocalClip(it) }
+        clipWatcher = ClipWatcher(this).also { it.begin() }
+
         val filter = IntentFilter().apply {
             addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
             addAction(HotspotController.ACTION_AP_STATE_CHANGED)
         }
         registerReceiver(receiver, filter, RECEIVER_EXPORTED) // difusiones del sistema
+        // Al conectarse a una Wi-Fi (quizá nueva) se vuelven a leer las redes guardadas.
+        getSystemService(ConnectivityManager::class.java).registerNetworkCallback(
+            NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(),
+            wifiCallback,
+        )
+        hub.refreshOwnNetworks()
         startBle()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
     override fun onDestroy() {
+        if (SyncBus.onLocalClip != null) SyncBus.onLocalClip = null
+        clipWatcher.end()
         runCatching { unregisterReceiver(receiver) }
+        runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(wifiCallback) }
         stopBle()
+        hub.shutdown()
         worker.shutdownNow()
         super.onDestroy()
     }
@@ -88,8 +127,15 @@ class HostService : Service() {
         }
     }
 
+    private val wifiCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            hub.refreshOwnNetworks()
+        }
+    }
+
     // ---------- Bluetooth LE ----------
 
+    @Synchronized
     private fun startBle() {
         val adapter = bluetooth.adapter ?: return
         if (!adapter.isEnabled || server != null) return
@@ -104,17 +150,7 @@ class HostService : Service() {
                 BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED,
             ),
         )
-        val state = BluetoothGattCharacteristic(
-            Protocol.STATE,
-            BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_NOTIFY,
-            BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED,
-        )
-        state.addDescriptor(
-            BluetoothGattDescriptor(
-                Protocol.CCCD,
-                BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED or BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED,
-            ),
-        )
+        val state = notifyCharacteristic(Protocol.STATE, readable = true)
         service.addCharacteristic(state)
         service.addCharacteristic(
             BluetoothGattCharacteristic(
@@ -123,9 +159,34 @@ class HostService : Service() {
                 BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED,
             ),
         )
+        service.addCharacteristic(
+            BluetoothGattCharacteristic(
+                Protocol.MSG_IN,
+                BluetoothGattCharacteristic.PROPERTY_WRITE,
+                BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED,
+            ),
+        )
+        val msgOut = notifyCharacteristic(Protocol.MSG_OUT, readable = false)
+        service.addCharacteristic(msgOut)
         stateChar = state
+        msgOutChar = msgOut
         gatt.addService(service)
         // El anuncio se lanza en onServiceAdded, cuando el servicio ya está registrado.
+    }
+
+    private fun notifyCharacteristic(uuid: java.util.UUID, readable: Boolean): BluetoothGattCharacteristic {
+        val c = BluetoothGattCharacteristic(
+            uuid,
+            BluetoothGattCharacteristic.PROPERTY_NOTIFY or (if (readable) BluetoothGattCharacteristic.PROPERTY_READ else 0),
+            if (readable) BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED else 0,
+        )
+        c.addDescriptor(
+            BluetoothGattDescriptor(
+                Protocol.CCCD,
+                BluetoothGattDescriptor.PERMISSION_READ_ENCRYPTED or BluetoothGattDescriptor.PERMISSION_WRITE_ENCRYPTED,
+            ),
+        )
+        return c
     }
 
     private fun startAdvertising() {
@@ -140,16 +201,23 @@ class HostService : Service() {
             .addServiceUuid(ParcelUuid(Protocol.SERVICE))
             .setIncludeDeviceName(false)
             .build()
-        runCatching { advertiser.startAdvertising(settings, data, advertiseCallback) }
+        // El identificador del móvil va en la respuesta al escaneo (en el anuncio no cabe).
+        val scanResponse = AdvertiseData.Builder()
+            .addServiceData(ParcelUuid(Protocol.SERVICE), Prefs.hubId(this))
+            .setIncludeDeviceName(false)
+            .build()
+        runCatching { advertiser.startAdvertising(settings, data, scanResponse, advertiseCallback) }
             .onFailure { Log.e(TAG, "startAdvertising", it) }
     }
 
+    @Synchronized
     private fun stopBle() {
         runCatching { bluetooth.adapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback) }
         runCatching { server?.close() }
         server = null
         stateChar = null
-        subscribers.clear()
+        msgOutChar = null
+        peers.clear()
     }
 
     private val advertiseCallback = object : AdvertiseCallback() {
@@ -162,13 +230,19 @@ class HostService : Service() {
         }
     }
 
+    private fun peer(device: BluetoothDevice) = peers.getOrPut(device.address) { Peer(device) }
+
     private val callback = object : BluetoothGattServerCallback() {
         override fun onServiceAdded(status: Int, service: BluetoothGattService) {
             if (status == BluetoothGatt.GATT_SUCCESS) startAdvertising()
         }
 
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
-            if (newState == BluetoothProfile.STATE_DISCONNECTED) subscribers.remove(device)
+            if (newState == BluetoothProfile.STATE_DISCONNECTED) peers.remove(device.address)
+        }
+
+        override fun onMtuChanged(device: BluetoothDevice, mtu: Int) {
+            peer(device).mtu = mtu
         }
 
         override fun onCharacteristicReadRequest(
@@ -192,8 +266,12 @@ class HostService : Service() {
             device: BluetoothDevice, requestId: Int, characteristic: BluetoothGattCharacteristic,
             preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?,
         ) {
-            val ok = characteristic.uuid == Protocol.COMMAND && value != null && value.size == 1 &&
-                (value[0] == Protocol.CMD_ON || value[0] == Protocol.CMD_OFF)
+            val ok = when (characteristic.uuid) {
+                Protocol.COMMAND -> value != null && value.size == 1 &&
+                    (value[0] == Protocol.CMD_ON || value[0] == Protocol.CMD_OFF)
+                Protocol.MSG_IN -> value != null && !preparedWrite && offset == 0
+                else -> false
+            }
             if (responseNeeded) {
                 server?.sendResponse(
                     device, requestId,
@@ -202,15 +280,28 @@ class HostService : Service() {
                 )
             }
             if (!ok) return
-            val on = value!![0] == Protocol.CMD_ON
-            worker.execute { runCommand(on) }
+            when (characteristic.uuid) {
+                Protocol.COMMAND -> {
+                    val on = value!![0] == Protocol.CMD_ON
+                    worker.execute { runCommand(on) }
+                }
+                Protocol.MSG_IN -> {
+                    val whole = peer(device).assembler.add(value!!) ?: return
+                    Msg.decode(whole)?.let { hub.onMessage(device.address, it) }
+                }
+            }
         }
 
         override fun onDescriptorReadRequest(
             device: BluetoothDevice, requestId: Int, offset: Int, descriptor: BluetoothGattDescriptor,
         ) {
-            val v = if (device in subscribers) BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-            else BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
+            val p = peers[device.address]
+            val on = when (descriptor.characteristic.uuid) {
+                Protocol.STATE -> p?.stateNotify == true
+                Protocol.MSG_OUT -> p?.msgNotify == true
+                else -> false
+            }
+            val v = if (on) BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE else BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
             server?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, v)
         }
 
@@ -219,17 +310,49 @@ class HostService : Service() {
             preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?,
         ) {
             if (descriptor.uuid == Protocol.CCCD) {
-                if (value != null && value.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)) {
-                    subscribers.add(device)
-                } else {
-                    subscribers.remove(device)
+                val on = value != null && value.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                val p = peer(device)
+                when (descriptor.characteristic.uuid) {
+                    Protocol.STATE -> p.stateNotify = on
+                    Protocol.MSG_OUT -> p.msgNotify = on
                 }
             }
             if (responseNeeded) server?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
         }
+
+        override fun onNotificationSent(device: BluetoothDevice, status: Int) {
+            val p = peers[device.address] ?: return
+            synchronized(p) {
+                p.sending = false
+                pump(p)
+            }
+        }
     }
 
-    // ---------- Órdenes ----------
+    // ---------- Mensajes al cliente ----------
+
+    private val transport = object : SyncHub.Transport {
+        override fun peers(): Collection<String> = peers.values.filter { it.msgNotify }.map { it.device.address }
+
+        override fun send(peer: String, msg: Msg) {
+            val p = peers[peer] ?: return
+            synchronized(p) {
+                val frames = Framing.split(p.nextMsgId++ and 0xFFFF, msg.encode(), p.mtu - 3)
+                p.outbox.addAll(frames)
+                pump(p)
+            }
+        }
+    }
+
+    /** Android exige esperar a onNotificationSent antes de la siguiente notificación al mismo cliente. */
+    private fun pump(p: Peer) {
+        if (p.sending) return
+        val frame = p.outbox.pollFirst() ?: return
+        val ok = notify(p.device, msgOutChar ?: return, frame)
+        if (ok) p.sending = true else p.outbox.clear() // cliente desconectado: se descarta
+    }
+
+    // ---------- Hotspot ----------
 
     private fun runCommand(on: Boolean) {
         val error = if (on) hotspot.start() else hotspot.stop()
@@ -256,21 +379,24 @@ class HostService : Service() {
     private fun notifyState(state: Int = hotspot.state()) {
         if (state == lastState) return
         lastState = state
-        val gatt = server ?: return
         val char = stateChar ?: return
         val value = byteArrayOf(state.toByte())
-        for (device in subscribers) {
-            runCatching {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    gatt.notifyCharacteristicChanged(device, char, false, value)
-                } else {
-                    @Suppress("DEPRECATION")
-                    char.value = value
-                    @Suppress("DEPRECATION")
-                    gatt.notifyCharacteristicChanged(device, char, false)
-                }
+        // El estado es un único byte y no compite con los mensajes: no hace falta cola.
+        peers.values.filter { it.stateNotify }.forEach { notify(it.device, char, value) }
+    }
+
+    private fun notify(device: BluetoothDevice, char: BluetoothGattCharacteristic, value: ByteArray): Boolean {
+        val gatt = server ?: return false
+        return runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                gatt.notifyCharacteristicChanged(device, char, false, value) == android.bluetooth.BluetoothStatusCodes.SUCCESS
+            } else {
+                @Suppress("DEPRECATION")
+                char.value = value
+                @Suppress("DEPRECATION")
+                gatt.notifyCharacteristicChanged(device, char, false)
             }
-        }
+        }.getOrDefault(false)
     }
 
     private fun notification(): Notification {

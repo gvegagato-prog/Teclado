@@ -38,4 +38,21 @@
     <string name="tile_off">Toca para conectar</string>
     <string name="tile_connecting">Conectando…</string>
     <string name="tile_disconnecting">Apagando…</string>
+
+    <string name="sync_title">Pera · familia</string>
+    <string name="sync_searching">Buscando el móvil…</string>
+    <string name="sync_section">Sincronización de la familia Pera</string>
+    <string name="sync_explain">Lo último que copies en un dispositivo aparece en los demás, y las redes Wi-Fi que conoce uno las conocen todos. Viaja por Bluetooth entre tus dispositivos emparejados, sin servidores.</string>
+    <string name="sync_switch_client">Mantener esta tablet conectada al móvil</string>
+    <string name="sync_clip">Sincronizar lo copiado</string>
+    <string name="sync_wifi">Sincronizar redes Wi-Fi</string>
+    <string name="sync_source_teclado">Copias: Teclado es tu teclado ✓</string>
+    <string name="sync_source_shizuku">Copias: se detectan con Shizuku (Android puede mostrar «Shell ha pegado…»: se quita desactivando «Mostrar acceso al portapapeles» en los ajustes de privacidad)</string>
+    <string name="sync_source_none">Copias: sin Teclado ni Shizuku, Pera solo puede recibir. Para enviar algo, usa «Compartir → Pera».</string>
+    <string name="sync_status">Estado: %1$s</string>
+    <string name="sync_hub">este móvil es el centro de la familia</string>
+    <string name="sync_off">desactivada en este dispositivo</string>
+    <string name="share_label">Enviar a la familia Pera</string>
+    <string name="share_sent">Enviado a la familia Pera</string>
+    <string name="share_no_service">Pera no está activo en este dispositivo</string>
 </resources>

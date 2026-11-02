@@ -22,6 +22,18 @@ object Protocol {
     /** Lectura: JSON UTF-8 {"ssid": "...", "pass": "...", "sec": "wpa2"|"wpa3"|"open"}. */
     val WIFI: UUID = UUID.fromString("5e1e2505-2ebf-487d-b745-36b2692ef8bb")
 
+    /** Canal de mensajes cliente → móvil (escritura de fragmentos, ver sync/Framing.kt). */
+    val MSG_IN: UUID = UUID.fromString("4af7edca-a0a3-49ed-b043-e555361dd8ee")
+
+    /** Canal de mensajes móvil → cliente (notificación de fragmentos). */
+    val MSG_OUT: UUID = UUID.fromString("f049b244-0074-4753-b89f-8c89ae98f59b")
+
+    /**
+     * En la respuesta al escaneo, los datos de servicio de [SERVICE] llevan 4 bytes que identifican al
+     * móvil. Así cada cliente se queda con SU móvil y no intenta emparejarse con el de otra persona.
+     */
+    const val HUB_ID_BYTES = 4
+
     /** Descriptor estándar para activar notificaciones. */
     val CCCD: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 

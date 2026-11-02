@@ -14,8 +14,6 @@ import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
-import android.net.wifi.WifiManager
-import android.net.wifi.WifiNetworkSuggestion
 import android.os.Build
 import android.os.ParcelUuid
 import android.util.Log
@@ -92,6 +90,8 @@ class PeraClient(private val context: Context, private val progress: (String) ->
         // Primera operación cifrada: si no estáis emparejados, Android muestra el aviso de emparejar.
         progress("Si aparece, acepta el emparejamiento en los dos dispositivos")
         subscribe(g, state)
+        // Emparejados y cifrados: a partir de ahora, este es nuestro móvil.
+        foundHubId?.let { if (Prefs.pairedHubId(context) == null) Prefs.setPairedHubId(context, it) }
 
         progress(if (turnOn) "Encendiendo el hotspot…" else "Apagando el hotspot…")
         val payload = byteArrayOf(if (turnOn) Protocol.CMD_ON else Protocol.CMD_OFF)
@@ -116,18 +116,25 @@ class PeraClient(private val context: Context, private val progress: (String) ->
         return Result(true, "Hotspot encendido · $wifiMsg", true)
     }
 
+    private var foundHubId: ByteArray? = null
+
     private fun scan(scanner: android.bluetooth.le.BluetoothLeScanner): BluetoothDevice? {
-        val found = LinkedBlockingQueue<BluetoothDevice>()
+        val found = LinkedBlockingQueue<ScanResult>()
+        val mine = Prefs.pairedHubId(context)
         val cb = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
-                found.offer(result.device)
+                val id = result.scanRecord?.getServiceData(ParcelUuid(Protocol.SERVICE))
+                // Con un móvil ya emparejado, se ignoran los de otras personas.
+                if (mine == null || (id != null && id.contentEquals(mine))) found.offer(result)
             }
         }
         val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(Protocol.SERVICE)).build()
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
         scanner.startScan(listOf(filter), settings, cb)
         return try {
-            found.poll(12, TimeUnit.SECONDS)
+            found.poll(12, TimeUnit.SECONDS)?.also {
+                foundHubId = it.scanRecord?.getServiceData(ParcelUuid(Protocol.SERVICE))
+            }?.device
         } finally {
             runCatching { scanner.stopScan(cb) }
         }
@@ -205,26 +212,14 @@ class PeraClient(private val context: Context, private val progress: (String) ->
 
     /** Entrega la red al sistema; Android se conecta solo cuando la ve (la primera vez pide permiso). */
     private fun suggest(w: Protocol.Wifi): String {
-        val key = "${w.ssid}|${w.pass}|${w.sec}"
-        if (Prefs.clientSuggested(context) == key) return "la tablet se conectará sola a «${w.ssid}»"
-        val b = WifiNetworkSuggestion.Builder().setSsid(w.ssid).setIsAppInteractionRequired(false)
-        when {
-            w.sec == "open" -> Unit
-            w.pass == null -> return "falta la contraseña de «${w.ssid}»; conéctate a mano una vez"
-            w.sec == "wpa3" -> b.setWpa3Passphrase(w.pass)
-            else -> b.setWpa2Passphrase(w.pass)
+        if (app.pera.shell.Shell.ready() && app.pera.shell.Shell.addNetwork(w)) {
+            return "la tablet se conectará sola a «${w.ssid}»"
         }
-        val wm = context.getSystemService(WifiManager::class.java)
-        // Sustituye cualquier sugerencia anterior de Pera (por si cambió la contraseña).
-        runCatching { wm.removeNetworkSuggestions(emptyList()) }
-        val status = wm.addNetworkSuggestions(listOf(b.build()))
-        return if (status == WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS ||
-            status == WifiManager.STATUS_NETWORK_SUGGESTIONS_ERROR_ADD_DUPLICATE
-        ) {
-            Prefs.setClientSuggested(context, key)
+        val error = WifiApplier.suggest(context, w)
+        return if (error == null) {
             "la tablet se conectará sola a «${w.ssid}» (la primera vez, acepta el aviso de redes sugeridas)"
         } else {
-            "Android no aceptó la red ($status); conéctate a mano a «${w.ssid}» una vez"
+            "$error; conéctate a mano a «${w.ssid}» una vez"
         }
     }
 

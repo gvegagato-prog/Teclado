@@ -6,5 +6,6 @@ let package = Package(
     platforms: [.macOS(.v13)], // MenuBarExtra y SMAppService
     targets: [
         .executableTarget(name: "Pera", path: "Sources/Pera"),
+        .testTarget(name: "PeraTests", dependencies: ["Pera"], path: "Tests/PeraTests"),
     ]
 )

@@ -23,6 +23,35 @@ enum WifiJoiner {
         return false
     }
 
+    /// Añade redes a las «redes preferidas» del Mac (se unirá solo cuando las vea). macOS pide la
+    /// contraseña de administrador una vez para todas. Devuelve nil si ha ido bien, o el motivo.
+    static func addPreferred(_ nets: [PeraProtocol.Wifi]) -> String? {
+        guard let device = wifiDevice() else { return "No encuentro el Wi-Fi del Mac" }
+        let commands = nets.map { w -> String in
+            // networksetup no admite WPA3 (ver su página de manual): esas redes no llegan aquí.
+            let type = w.sec == "open" ? "OPEN" : "WPA2"
+            var parts = ["/usr/sbin/networksetup", "-addpreferredwirelessnetworkatindex", device, w.ssid, "0", type]
+            if w.sec != "open", let pass = w.pass { parts.append(pass) }
+            return parts.map(shellQuote).joined(separator: " ")
+        }
+        let script = "do shell script \"\(appleScriptEscape(commands.joined(separator: "; ")))\" with administrator privileges"
+        var error: NSDictionary?
+        NSAppleScript(source: script)?.executeAndReturnError(&error)
+        if let error {
+            let code = error[NSAppleScript.errorNumber] as? Int
+            return code == -128 ? "Cancelado" : "macOS no dejó añadir las redes: \(error[NSAppleScript.errorMessage] ?? "")"
+        }
+        return nil
+    }
+
+    private static func shellQuote(_ s: String) -> String {
+        "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    private static func appleScriptEscape(_ s: String) -> String {
+        s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
     /// Nombre del interfaz Wi-Fi (normalmente en0).
     static func wifiDevice() -> String? {
         let (_, out) = run("/usr/sbin/networksetup", ["-listallhardwareports"])

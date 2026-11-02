@@ -24,9 +24,12 @@ import android.widget.Switch
 import android.widget.TextView
 import app.pera.client.ClientService
 import app.pera.client.HotspotTileService
+import app.pera.client.SyncService
 import app.pera.host.HostService
 import app.pera.host.HotspotController
 import app.pera.host.HotspotController.ShizukuState
+import app.pera.sync.SyncBus
+import app.pera.sync.SyncStore
 import rikka.shizuku.Shizuku
 import java.util.concurrent.Executors
 
@@ -41,6 +44,10 @@ class MainActivity : Activity() {
     private lateinit var hotspotText: TextView
     private lateinit var batteryButton: Button
     private lateinit var clientText: TextView
+    private lateinit var syncSwitch: Switch
+    private lateinit var syncSource: TextView
+    private lateinit var syncStatus: TextView
+    private lateinit var store: SyncStore
     private val io = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private var pendingAfterPermissions: (() -> Unit)? = null
@@ -57,6 +64,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         hotspot = HotspotController(this)
+        store = SyncStore(this)
         setContentView(buildUi())
         Shizuku.addRequestPermissionResultListener(shizukuListener)
         Shizuku.addBinderReceivedListenerSticky(binderListener)
@@ -125,6 +133,30 @@ class MainActivity : Activity() {
         clientText = text("")
         root.addView(clientText)
 
+        // --- Sincronización ---
+        root.addView(title(getString(R.string.sync_section), 20f))
+        root.addView(text(getString(R.string.sync_explain)))
+        root.addView(Switch(this).apply {
+            text = getString(R.string.sync_clip)
+            isChecked = store.clipEnabled
+            setOnCheckedChangeListener { _, on -> store.clipEnabled = on }
+        })
+        root.addView(Switch(this).apply {
+            text = getString(R.string.sync_wifi)
+            isChecked = store.wifiEnabled
+            setOnCheckedChangeListener { _, on -> store.wifiEnabled = on }
+        })
+        syncSwitch = Switch(this).apply {
+            text = getString(R.string.sync_switch_client)
+            isChecked = Prefs.syncEnabled(this@MainActivity)
+            setOnCheckedChangeListener { _, on -> onSyncSwitch(on) }
+        }
+        root.addView(syncSwitch)
+        syncSource = text("")
+        root.addView(syncSource)
+        syncStatus = text("")
+        root.addView(syncStatus)
+
         return ScrollView(this).apply { addView(root) }
     }
 
@@ -165,6 +197,24 @@ class MainActivity : Activity() {
         val pm = getSystemService(PowerManager::class.java)
         batteryButton.visibility = if (pm.isIgnoringBatteryOptimizations(packageName)) View.GONE else View.VISIBLE
         ClientService.lastMessage?.let { clientText.text = it }
+
+        val host = Prefs.hostEnabled(this)
+        syncSwitch.isEnabled = !host // el móvil ya es el centro: no se conecta a sí mismo
+        syncSource.text = getString(
+            when {
+                SyncBus.tecladoIsKeyboard(this) -> R.string.sync_source_teclado
+                hotspot.shizukuStatus() == ShizukuState.READY -> R.string.sync_source_shizuku
+                else -> R.string.sync_source_none
+            },
+        )
+        syncStatus.text = getString(
+            R.string.sync_status,
+            when {
+                host -> getString(R.string.sync_hub)
+                Prefs.syncEnabled(this) -> SyncService.status ?: getString(R.string.sync_searching)
+                else -> getString(R.string.sync_off)
+            },
+        )
     }
 
     // ---------- Acciones ----------
@@ -177,7 +227,24 @@ class MainActivity : Activity() {
         }
         withPermissions(hostPermissions()) {
             Prefs.setHostEnabled(this, true)
+            if (Prefs.syncEnabled(this)) {
+                Prefs.setSyncEnabled(this, false)
+                syncSwitch.isChecked = false
+                SyncService.stop(this)
+            }
             HostService.start(this)
+        }
+    }
+
+    private fun onSyncSwitch(on: Boolean) {
+        if (!on) {
+            Prefs.setSyncEnabled(this, false)
+            SyncService.stop(this)
+            return
+        }
+        withPermissions(clientPermissions()) {
+            Prefs.setSyncEnabled(this, true)
+            SyncService.start(this)
         }
     }
 
@@ -249,6 +316,7 @@ class MainActivity : Activity() {
             action?.invoke()
         } else {
             hostSwitch.isChecked = Prefs.hostEnabled(this)
+            syncSwitch.isChecked = Prefs.syncEnabled(this)
             clientText.text = getString(R.string.need_bluetooth)
         }
     }

@@ -11,6 +11,28 @@ enum PeraProtocol {
     /// Lectura: JSON con la red Wi-Fi del hotspot.
     static let wifi = CBUUID(string: "5e1e2505-2ebf-487d-b745-36b2692ef8bb")
 
+    /// Canal de mensajes Mac → móvil (escritura de fragmentos).
+    static let msgIn = CBUUID(string: "4af7edca-a0a3-49ed-b043-e555361dd8ee")
+    /// Canal de mensajes móvil → Mac (notificación de fragmentos).
+    static let msgOut = CBUUID(string: "f049b244-0074-4753-b89f-8c89ae98f59b")
+
+    /// ¿Es este anuncio el de nuestro móvil? (4 bytes en los datos de servicio de la respuesta al escaneo).
+    /// Sin identificador guardado se acepta el primero; tras emparejar, solo el nuestro.
+    static func isOurHub(_ advertisementData: [String: Any]) -> Bool {
+        guard let mine = UserDefaults.standard.data(forKey: "pairedHub") else { return true }
+        let data = advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data]
+        return data?[service] == mine
+    }
+
+    static func hubId(_ advertisementData: [String: Any]) -> Data? {
+        (advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data])?[service]
+    }
+
+    static func rememberHub(_ id: Data?) {
+        guard let id, UserDefaults.standard.data(forKey: "pairedHub") == nil else { return }
+        UserDefaults.standard.set(id, forKey: "pairedHub")
+    }
+
     static let cmdOff: UInt8 = 0
     static let cmdOn: UInt8 = 1
 
@@ -33,7 +55,7 @@ enum PeraProtocol {
         }
     }
 
-    struct Wifi: Decodable {
+    struct Wifi: Decodable, Equatable {
         let ssid: String
         let pass: String?
         let sec: String

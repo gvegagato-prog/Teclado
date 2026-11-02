@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Bluetooth LE: el móvil anuncia y atiende; la tablet busca y conecta. No se usa para ubicación. -->
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
@@ -71,6 +72,35 @@
                 android:name="android.service.quicksettings.ACTIVE_TILE"
                 android:value="false" />
         </service>
+
+        <service
+            android:name=".client.SyncService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <!-- Copias que llegan de Teclado (se verifica el emisor en el código). -->
+        <receiver
+            android:name=".sync.ClipBridgeReceiver"
+            android:exported="true"
+            tools:ignore="ExportedReceiver">
+            <intent-filter>
+                <action android:name="app.pera.action.CLIP" />
+            </intent-filter>
+        </receiver>
+
+        <activity
+            android:name=".sync.ShareActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/share_label"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
 
         <receiver
             android:name=".host.BootReceiver"

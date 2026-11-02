@@ -1,3 +1,4 @@
+import AppKit
 import ServiceManagement
 import SwiftUI
 
@@ -5,10 +6,11 @@ import SwiftUI
 @main
 struct PeraApp: App {
     @StateObject private var model = PeraModel()
+    @StateObject private var family = FamilySync()
 
     var body: some Scene {
         MenuBarExtra {
-            MenuContent(model: model)
+            MenuContent(model: model, family: family)
         } label: {
             Image(systemName: model.symbol)
         }
@@ -18,6 +20,7 @@ struct PeraApp: App {
 
 struct MenuContent: View {
     @ObservedObject var model: PeraModel
+    @ObservedObject var family: FamilySync
 
     var body: some View {
         Text(model.status)
@@ -26,6 +29,15 @@ struct MenuContent: View {
             .disabled(model.busy)
         Button("Apagar el hotspot del móvil") { model.run(turnOn: false) }
             .disabled(model.busy)
+        Divider()
+        Text("Familia Pera: \(family.status)")
+        Toggle("Sincronizar lo copiado", isOn: $family.clipEnabled)
+        Toggle("Sincronizar redes Wi-Fi", isOn: $family.wifiEnabled)
+        if !family.pendingNets.isEmpty {
+            Button("Añadir \(family.pendingNets.count) redes Wi-Fi de la familia a este Mac…") {
+                family.addPendingNetworks()
+            }
+        }
         Divider()
         Toggle("Abrir al iniciar sesión", isOn: Binding(
             get: { model.launchAtLogin },

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Pera</string>
+    <string name="channel_name">Pera</string>
+    <string name="intro">Usa los datos de tu móvil desde la tablet o el Mac sin sacar el móvil del bolsillo. Instala Pera en los dos Android: en el móvil activa «Compartir», en la tablet usa el botón del panel.</string>
+
+    <string name="host_title">Este es mi móvil (comparte datos)</string>
+    <string name="host_explain">Pera queda esperando por Bluetooth. Cuando la tablet o el Mac lo piden, enciende el hotspot. Necesita Shizuku para poder encenderlo.</string>
+    <string name="host_switch">Compartir los datos de este móvil</string>
+    <string name="host_notification_title">Pera está listo</string>
+    <string name="host_notification_text">La tablet o el Mac pueden encender el hotspot</string>
+
+    <string name="shizuku_missing">Shizuku: no instalado. Instala el fork de thedjchi (arranca solo tras reiniciar).</string>
+    <string name="shizuku_download">Descargar Shizuku</string>
+    <string name="shizuku_not_running">Shizuku: instalado pero no en marcha. Ábrelo y arráncalo (activa «Iniciar al arrancar»).</string>
+    <string name="shizuku_open">Abrir Shizuku</string>
+    <string name="shizuku_no_permission">Shizuku: en marcha, falta dar permiso a Pera.</string>
+    <string name="shizuku_grant">Dar permiso a Pera</string>
+    <string name="shizuku_ready">Shizuku: listo ✓</string>
+    <string name="hotspot_state">Hotspot: %1$s</string>
+    <string name="test_on">Probar: encender</string>
+    <string name="test_off">Probar: apagar</string>
+    <string name="sent">Orden enviada</string>
+    <string name="battery">Permitir que Pera funcione en segundo plano</string>
+
+    <string name="client_title">Esta es mi tablet (usa los datos)</string>
+    <string name="client_explain">Busca el móvil por Bluetooth, le pide encender el hotspot y entrega la red a Android para conectarse sola. La primera vez se pide emparejar los dos dispositivos.</string>
+    <string name="client_on">Conectar</string>
+    <string name="client_off">Desconectar</string>
+    <string name="client_working">Hablando con el móvil…</string>
+    <string name="client_ok">Pera</string>
+    <string name="client_error">Pera: no se pudo</string>
+    <string name="add_tile">Añadir botón al panel de ajustes rápidos</string>
+    <string name="need_bluetooth">Pera necesita el permiso de dispositivos cercanos (Bluetooth).</string>
+
+    <string name="tile_label">Datos del móvil</string>
+    <string name="tile_on">Conectado</string>
+    <string name="tile_off">Toca para conectar</string>
+    <string name="tile_connecting">Conectando…</string>
+    <string name="tile_disconnecting">Apagando…</string>
+</resources>

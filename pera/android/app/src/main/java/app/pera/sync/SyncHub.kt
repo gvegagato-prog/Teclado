@@ -86,7 +86,7 @@ class SyncHub(private val context: Context, private val transport: Transport) {
             broadcast(Msg.Here(here), except = null)
         }
         store.wifiDiag = Shell.lastWifiError?.let { "error al leer: $it" }
-            ?: "${own.size} redes guardadas leídas · conectado a: ${here?.ssid ?: "ninguna"}"
+            ?: "${own.size} redes guardadas leídas · conectado a: ${here?.ssid ?: "ninguna"} (${Shell.currentHow})"
     }
 
     private fun applyNetworks(nets: List<Protocol.Wifi>) {

@@ -15,6 +15,7 @@ class ClipBridgeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != ACTION) return
         val text = intent.getStringExtra(EXTRA_TEXT) ?: return
+        if (text == SyncStore.lastApplied) return // es lo que Pera acaba de poner (llegó de otro dispositivo)
         SyncStore(context).noteClip("de Teclado: ${text.take(30)}")
         app.pera.Watchdog.ensure(context) // si Android había parado los servicios, vuelven
         SyncBus.localCopy(context, text)

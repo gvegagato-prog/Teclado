@@ -69,13 +69,35 @@ object Shell {
     fun savedNetworks(): List<Protocol.Wifi> = savedConfigs().mapNotNull(::toWifi)
 
     /** La red a la que está conectado este dispositivo ahora mismo, con su contraseña; null si no hay. */
-    fun currentNetwork(): Protocol.Wifi? = runCatching {
-        val info = call(wifi(), "getConnectionInfo") as android.net.wifi.WifiInfo? ?: return null
-        val id = info.networkId
-        if (id < 0) return null
-        savedConfigs().firstOrNull { it.networkId == id }?.let(::toWifi)
-    }.onFailure { lastWifiError = "red actual: ${it.javaClass.simpleName}: ${it.message}"; Log.w(TAG, "getConnectionInfo", it) }
-        .getOrNull()
+    fun currentNetwork(): Protocol.Wifi? {
+        val configs = savedConfigs()
+        if (configs.isEmpty()) return null
+        // 1) y 2) Por la conexión actual: identificador de red o, si viene censurado, el nombre.
+        val info = runCatching { call(wifi(), "getConnectionInfo") as android.net.wifi.WifiInfo? }
+            .onFailure { Log.w(TAG, "getConnectionInfo", it) }.getOrNull()
+        @Suppress("DEPRECATION")
+        val ssid = info?.ssid?.removeSurrounding("\"")?.takeIf { it.isNotEmpty() && it != "<unknown ssid>" }
+        val byInfo = info?.networkId?.takeIf { it >= 0 }?.let { id -> configs.firstOrNull { it.networkId == id } }
+            ?: ssid?.let { s -> configs.firstOrNull { it.SSID == "\"$s\"" } }
+        // 3) Si no (algunos fabricantes censuran la conexión), la red guardada que el sistema marca
+        //    como en uso (WifiConfigManager pone status = CURRENT al conectar y lo quita al desconectar).
+        val config = byInfo ?: configs.firstOrNull { it.status == WifiConfiguration.Status.CURRENT }
+        currentHow = when {
+            byInfo != null -> "por la conexión"
+            config != null -> "por la marca de red en uso"
+            info == null -> "no se pudo leer la conexión"
+            else -> "conexión censurada (id ${info.networkId}) y ninguna red marcada en uso"
+        }
+        val wifi = config?.let(::toWifi)
+        if (config != null && wifi == null) {
+            currentHow = "la red ${config.SSID} no se puede compartir (oculta, de empresa, WEP o sin contraseña legible)"
+        }
+        return wifi
+    }
+
+    /** Cómo se averiguó (o por qué no) la red actual: para el diagnóstico. */
+    @Volatile var currentHow: String = ""
+        private set
 
     private fun savedConfigs(): List<WifiConfiguration> = runCatching {
         val slice = call(wifi(), "getPrivilegedConfiguredNetworks", shellAttributionExtras())

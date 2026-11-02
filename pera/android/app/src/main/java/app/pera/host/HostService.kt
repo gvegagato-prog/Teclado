@@ -102,10 +102,18 @@ class HostService : Service() {
         )
         // Tras reiniciar, Shizuku suele arrancar después que Pera: entonces se leen las redes.
         Shizuku.addBinderReceivedListenerSticky(shizukuReady)
+        // Además de en cada cambio de Wi-Fi, se revisa cada 2 min por si algún aviso se perdió.
+        main.postDelayed(periodicRefresh, 120_000)
         startBle()
     }
 
     private val shizukuReady = Shizuku.OnBinderReceivedListener { hub.refreshOwnNetworks() }
+    private val periodicRefresh: Runnable = object : Runnable {
+        override fun run() {
+            hub.refreshOwnNetworks()
+            main.postDelayed(this, 120_000)
+        }
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
@@ -113,6 +121,7 @@ class HostService : Service() {
         if (SyncBus.onLocalClip != null) SyncBus.onLocalClip = null
         clipWatcher.end()
         Shizuku.removeBinderReceivedListener(shizukuReady)
+        main.removeCallbacks(periodicRefresh)
         runCatching { unregisterReceiver(receiver) }
         runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(wifiCallback) }
         stopBle()
